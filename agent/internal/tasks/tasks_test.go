@@ -180,13 +180,13 @@ func TestSafeName(t *testing.T) {
 }
 
 func TestSplitUTF8(t *testing.T) {
-	b := []byte("Grüße") // ü = 2 bytes, ß = 2 bytes
+	b := []byte("Grüß") // ü = 2 bytes, ß = 2 bytes; cutting the last byte splits the ß
 	valid, rest := splitUTF8(b[:len(b)-1])
 	if string(valid) != "Grü" || len(rest) != 1 {
 		t.Fatalf("got %q / %v", valid, rest)
 	}
 	valid, rest = splitUTF8(b)
-	if string(valid) != "Grüße" || rest != nil {
+	if string(valid) != "Grüß" || rest != nil {
 		t.Fatalf("complete: %q / %v", valid, rest)
 	}
 }

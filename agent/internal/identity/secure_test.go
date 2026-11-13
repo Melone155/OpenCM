@@ -9,6 +9,10 @@ import (
 
 // REV-006: configuration and key material that another user owns or can write must be refused.
 func TestAssertTrustedAndPrepareConfigDir(t *testing.T) {
+	if !elevated() {
+		// icacls /C does not fail without rights, it just leaves the owner unchanged
+		t.Skip("needs an elevated process to take ownership")
+	}
 	base := t.TempDir()
 
 	// a missing path is skipped, a freshly created directory is trusted
