@@ -482,7 +482,7 @@ describe('M4: audit export', () => {
     assert.equal(csv.statusCode, 200);
     assert.match(String(csv.headers['content-type']), /text\/csv/);
     assert.match(String(csv.headers['content-disposition']), /opencm-audit-.*\.csv/);
-    assert.ok(csv.body.startsWith('﻿id;at;actorType'));
+    assert.ok(csv.body.startsWith('\uFEFFid;at;actorType'));
     assert.ok(csv.body.includes(`"'=HYPERLINK(""x"")"`), 'formula neutralised');
     assert.ok(!/;"=HYPERLINK/.test(csv.body));
 

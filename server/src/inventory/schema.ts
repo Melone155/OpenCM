@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 /**
  * Inventory payload sent by the agent (POST /agent/v1/inventory).

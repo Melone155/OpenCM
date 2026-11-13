@@ -74,7 +74,7 @@ export function postureRoutes(app: FastifyInstance, config: Config) {
       return reply
         .header('content-type', 'text/csv; charset=utf-8')
         .header('content-disposition', `attachment; filename="opencm-sicherheitsstatus-${new Date().toISOString().slice(0, 10)}.csv"`)
-        .send(`﻿${header.join(';')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`);
+        .send(`\uFEFF${header.join(';')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`);
     }
     const items = await base.limit(q.limit).offset(q.offset);
     const [total] = await app.db.select({ n: count() }).from(devices).leftJoin(ds, eq(ds.deviceId, devices.id)).where(where);

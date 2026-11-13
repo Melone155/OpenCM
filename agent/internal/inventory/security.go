@@ -173,7 +173,7 @@ func parseSpctlStatus(s string) *bool {
 
 // applyWindowsSecurityJSON parses the output of windows_security.ps1.
 func applyWindowsSecurityJSON(data []byte) (*Security, error) {
-	data = []byte(strings.TrimPrefix(string(data), "﻿"))
+	data = []byte(strings.TrimPrefix(string(data), "\uFEFF"))
 	var s Security
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, err

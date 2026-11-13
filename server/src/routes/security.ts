@@ -206,6 +206,6 @@ export function securityRoutes(app: FastifyInstance, config: Config, directory: 
     return reply
       .header('content-type', 'text/csv; charset=utf-8')
       .header('content-disposition', `attachment; filename="opencm-audit-${stamp}.csv"`)
-      .send(`﻿${header.join(';')}\r\n${lines.join('\r\n')}\r\n`);
+      .send(`\uFEFF${header.join(';')}\r\n${lines.join('\r\n')}\r\n`);
   });
 }

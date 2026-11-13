@@ -3,7 +3,7 @@
  * The delimiter is detected from the header line: German Excel writes ";", most other tools ",".
  */
 export function detectDelimiter(text: string): ';' | ',' | '\t' {
-  const firstLine = text.replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '';
+  const firstLine = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
   const count = (c: string) => firstLine.split(c).length - 1;
   const counts: [';' | ',' | '\t', number][] = [
     [';', count(';')],
@@ -15,7 +15,7 @@ export function detectDelimiter(text: string): ';' | ',' | '\t' {
 }
 
 export function parseCsv(text: string, delimiter = detectDelimiter(text)): string[][] {
-  const s = text.replace(/^﻿/, '');
+  const s = text.replace(/^\uFEFF/, '');
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';

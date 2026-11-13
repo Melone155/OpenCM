@@ -188,7 +188,7 @@ export function assetRoutes(app: FastifyInstance) {
       return reply
         .header('content-type', 'text/csv; charset=utf-8')
         .header('content-disposition', `attachment; filename="opencm-assets-${new Date().toISOString().slice(0, 10)}.csv"`)
-        .send(`﻿${CSV_EXPORT_ORDER.join(';')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`);
+        .send(`\uFEFF${CSV_EXPORT_ORDER.join(';')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`);
     }
     const items = (await base.limit(q.limit).offset(q.offset)).map(out);
     const [total] = await app.db.select({ n: count() }).from(assets).leftJoin(devices, eq(devices.id, assets.deviceId)).where(where);

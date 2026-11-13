@@ -139,7 +139,7 @@ func parseTargets(c *api.Client, specs []string) (jobTargets, error) {
 	}
 	for _, spec := range specs {
 		kind, val, ok := strings.Cut(spec, ":")
-		if !ok {
+		if !ok && !strings.EqualFold(spec, "all") {
 			kind, val = "device", spec
 		}
 		switch strings.ToLower(kind) {

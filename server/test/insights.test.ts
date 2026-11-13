@@ -126,7 +126,7 @@ describe('M6: dashboard, reports, webhooks, licenses', () => {
     const json = await api('GET', `/reports/${shared.body.id}/run`, undefined, other.token);
     assert.equal(json.body.rows.length, 2);
     const csv = await api('GET', `/reports/${shared.body.id}/run?format=csv`);
-    assert.ok(String(csv.body).startsWith('﻿"Gerät";"Betriebssystem"'));
+    assert.ok(String(csv.body).startsWith('\uFEFF"Gerät";"Betriebssystem"'));
     assert.match(String(csv.body), /"WIN-A";"windows"/);
     assert.equal((await api('DELETE', `/reports/${priv.body.id}`)).status, 204);
   });

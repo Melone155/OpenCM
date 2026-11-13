@@ -116,7 +116,7 @@ func TestParseMacOSSecurity(t *testing.T) {
 }
 
 // Shape produced by windows_security.ps1 (synthetic values).
-const windowsSecurityJSON = "﻿" + `{"encryption":{"product":"BitLocker","volumes":[{"volume":"C:","system":true,"encrypted":true,"status":"FullyEncrypted","method":"XtsAes256","protection":true}]},
+const windowsSecurityJSON = "\uFEFF" + `{"encryption":{"product":"BitLocker","volumes":[{"volume":"C:","system":true,"encrypted":true,"status":"FullyEncrypted","method":"XtsAes256","protection":true}]},
 "antivirus":[{"name":"Microsoft Defender Antivirus","enabled":true,"realtime":true,"upToDate":null,"signatureVersion":"1.401.1.0","signatureUpdatedAt":"2026-11-12T06:00:00Z","lastScanAt":null}],
 "firewall":{"product":"Windows Defender Firewall","enabled":null,"profiles":[{"name":"Domain","enabled":true},{"name":"Private","enabled":true},{"name":"Public","enabled":false}]},
 "secureBoot":true,"tpm":{"present":true,"ready":true,"version":"2.0"}}`

@@ -285,7 +285,7 @@ function ImportCard({ onDone }: { onDone: () => void }) {
       <p className="muted small">
         Spalten mit deutschen oder englischen Namen, getrennt durch Semikolon (Excel) oder Komma. Pflicht ist nur „Bezeichnung“. Vorhandene Assets werden über die Inventarnummer, sonst über die Seriennummer erkannt und aktualisiert. Datum als
         TT.MM.JJJJ oder JJJJ-MM-TT.{' '}
-        <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(`﻿${TEMPLATE}`)}`} download="opencm-assets-vorlage.csv">
+        <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(`\uFEFF${TEMPLATE}`)}`} download="opencm-assets-vorlage.csv">
           Vorlage herunterladen
         </a>
       </p>

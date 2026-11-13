@@ -147,7 +147,7 @@ describe('M7 units', () => {
   it('parses CSV and asset values', () => {
     assert.equal(detectDelimiter('a;b;c\n1;2;3'), ';');
     assert.equal(detectDelimiter('a,b\n1,2'), ',');
-    assert.deepEqual(parseCsv('﻿name;notes\r\n"Monitor ""A""";"Zeile 1\nZeile 2"\r\n\r\nDrucker;x'), [
+    assert.deepEqual(parseCsv('\uFEFFname;notes\r\n"Monitor ""A""";"Zeile 1\nZeile 2"\r\n\r\nDrucker;x'), [
       ['name', 'notes'],
       ['Monitor "A"', 'Zeile 1\nZeile 2'],
       ['Drucker', 'x'],
@@ -493,7 +493,7 @@ describe('M7: assets without agent', () => {
     const csv = await api('GET', '/assets?format=csv');
     assert.equal(csv.status, 200);
     const text = String(csv.body);
-    assert.ok(text.startsWith('﻿name;type;status;'), text.slice(0, 80));
+    assert.ok(text.startsWith('\uFEFFname;type;status;'), text.slice(0, 80));
     assert.match(text, /"Monitor Empfang";"monitor";"in_use"/);
     const again = await api('POST', '/assets/import', { csv: text, dryRun: true });
     assert.equal(again.body.errors.length, 0, JSON.stringify(again.body.errors));

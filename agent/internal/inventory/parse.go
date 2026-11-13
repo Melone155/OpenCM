@@ -592,7 +592,7 @@ func parseQuser(s string) []string {
 // collectedAt are filled in by Collect).
 func applyWindowsJSON(data []byte, inv *Inventory) error {
 	// PowerShell may emit a UTF-8 BOM.
-	data = []byte(strings.TrimPrefix(string(data), "﻿"))
+	data = []byte(strings.TrimPrefix(string(data), "\uFEFF"))
 	var w Inventory
 	if err := json.Unmarshal(data, &w); err != nil {
 		return err

@@ -207,6 +207,6 @@ export function patchRoutes(app: FastifyInstance, config: Config) {
     return reply
       .header('content-type', 'text/csv; charset=utf-8')
       .header('content-disposition', `attachment; filename="opencm-patchstand-${stamp}.csv"`)
-      .send(`﻿${header.join(';')}\r\n${lines.join('\r\n')}\r\n`);
+      .send(`\uFEFF${header.join(';')}\r\n${lines.join('\r\n')}\r\n`);
   });
 }

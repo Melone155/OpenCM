@@ -174,6 +174,6 @@ export function insightRoutes(app: FastifyInstance, config: Config) {
     return reply
       .header('content-type', 'text/csv; charset=utf-8')
       .header('content-disposition', `attachment; filename="${safeName}-${new Date().toISOString().slice(0, 10)}.csv"`)
-      .send(`﻿${header}\r\n${lines.join('\r\n')}\r\n`);
+      .send(`\uFEFF${header}\r\n${lines.join('\r\n')}\r\n`);
   });
 }
