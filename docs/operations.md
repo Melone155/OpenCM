@@ -3,7 +3,7 @@
 # Betriebshandbuch
 
 ## Installation
-Siehe `README.md` → Schnellstart. Kurzfassung: `deploy/.env` aus `.env.example` erzeugen, dann `docker compose up -d --build`.
+Siehe `README.md` → Schnellstart. Kurzfassung: `deploy/.env` aus `.env.example` erzeugen, dann `docker compose pull && docker compose up -d` (fertige Images aus `ghcr.io/melone155`) oder selbst bauen mit `docker compose up -d --build`.
 
 | Port | Dienst | Hinweis |
 |---|---|---|

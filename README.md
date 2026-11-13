@@ -362,12 +362,15 @@ flowchart LR
 **Requirements:** a Linux server with Docker and Docker Compose, a DNS name and the ports **443/80** (web) and **8443** (agents) open.
 
 ```bash
-git clone <repository-url> opencm
+git clone https://github.com/Melone155/OpenCM.git opencm
 cd opencm/deploy
 cp .env.example .env
 # edit .env: OPENCM_DOMAIN, ACME_EMAIL, POSTGRES_PASSWORD, BOOTSTRAP_ADMIN_PASSWORD
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+The images come ready-built from the GitHub Container Registry (`ghcr.io/melone155/opencm-server`, `ghcr.io/melone155/opencm-web`). `OPENCM_VERSION` in `.env` selects the tag (`latest` or a release such as `0.8.0`). To build the images yourself instead, run `docker compose up -d --build`.
 
 Then open `https://<OPENCM_DOMAIN>` and sign in with the bootstrap admin. The interactive API documentation is at `/api/docs`.
 

@@ -96,7 +96,7 @@ services:
       retries: 10
 
   server:
-    image: ${OPENCM_REGISTRY:-opencm}/server:${OPENCM_VERSION:-latest}
+    image: ${OPENCM_REGISTRY:-ghcr.io/melone155}/opencm-server:${OPENCM_VERSION:-latest}
     build: { context: .., dockerfile: server/Dockerfile }
     restart: unless-stopped
     environment: *server-env
@@ -112,7 +112,7 @@ services:
       redis: { condition: service_healthy }
 
   worker:
-    image: ${OPENCM_REGISTRY:-opencm}/server:${OPENCM_VERSION:-latest}
+    image: ${OPENCM_REGISTRY:-ghcr.io/melone155}/opencm-server:${OPENCM_VERSION:-latest}
     restart: unless-stopped
     command: ["node", "src/worker.ts"]
     environment: *server-env
@@ -126,7 +126,7 @@ services:
       server: { condition: service_healthy } # server runs the DB migrations first
 
   web:
-    image: ${OPENCM_REGISTRY:-opencm}/web:${OPENCM_VERSION:-latest}
+    image: ${OPENCM_REGISTRY:-ghcr.io/melone155}/opencm-web:${OPENCM_VERSION:-latest}
     build: { context: .., dockerfile: web/Dockerfile }
     restart: unless-stopped
 
