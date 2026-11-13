@@ -21,6 +21,12 @@ export async function connectPostgres(url: string): Promise<DbHandle> {
   const { migrate } = await import('drizzle-orm/postgres-js/migrator');
   const sql = postgres(url, { max: 10, onnotice: () => {} });
   const db = drizzle(sql, { schema });
+  // Return json/jsonb as raw text: drizzle parses it itself. drizzle only disables the
+  // serializers for these types, not the parsers – without this a jsonb string like
+  // "131.0" would be parsed twice (→ number 131). Same setting as for PGlite below.
+  const raw = (v: string) => v;
+  sql.options.parsers[114] = raw;
+  sql.options.parsers[3802] = raw;
   return {
     db: db as unknown as Db,
     migrate: () => migrate(db, { migrationsFolder: MIGRATIONS_FOLDER }),
@@ -34,7 +40,7 @@ export async function connectPglite(dataDir?: string): Promise<DbHandle> {
   const { drizzle } = await import('drizzle-orm/pglite');
   const { migrate } = await import('drizzle-orm/pglite/migrator');
   // Return json/jsonb as raw text: drizzle parses it itself. Otherwise a jsonb string
-  // like "131.0" would be parsed twice (→ number 131), unlike with postgres-js.
+  // like "131.0" would be parsed twice (→ number 131); see connectPostgres.
   const raw = (v: string) => v;
   // (single options object: PGlite ignores the 2nd argument when dataDir is undefined)
   const client = new PGlite({ dataDir, parsers: { 114: raw, 3802: raw } });
