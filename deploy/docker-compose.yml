@@ -1,4 +1,4 @@
-# OpenCM – production stack
+# OpenCM – production stack. Only this file and .env are needed (Docker Compose >= 2.23).
 #   cp .env.example .env   # fill in secrets
 #   docker compose up -d
 name: opencm
@@ -134,16 +134,57 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
-      OPENCM_DOMAIN: ${OPENCM_DOMAIN}
+      OPENCM_DOMAIN: ${OPENCM_DOMAIN:?set OPENCM_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL:-}
+      # "email" only when ACME_EMAIL is set – an empty `email` option would stop Caddy
+      CADDY_EMAIL_OPTION: ${ACME_EMAIL:+email}
     ports:
       - "80:80"
       - "443:443"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [server, web]
+
+configs:
+  # Reverse proxy with automatic HTTPS for OPENCM_DOMAIN, embedded so that only this file
+  # and .env are needed. ($$ = a literal $ for Caddy's own {$VAR} placeholders.)
+  #  - public DNS name → Let's Encrypt certificate (ports 80/443 reachable from the internet)
+  #  - IP address, localhost or internal name → certificate from Caddy's own local CA
+  #    (browser warning; agents: `opencm-agent enroll --ca-file`, see README)
+  # The agent mTLS endpoint (port 8443) is published by the server container directly.
+  caddyfile:
+    content: |
+      {
+      	{$$CADDY_EMAIL_OPTION} {$$ACME_EMAIL}
+      	# browsers send no SNI for IP addresses – without this the handshake fails
+      	default_sni {$$OPENCM_DOMAIN}
+      }
+
+      {$$OPENCM_DOMAIN} {
+      	encode zstd gzip
+
+      	handle /api/* {
+      		reverse_proxy server:8080
+      	}
+
+      	handle {
+      		reverse_proxy web:8080
+      	}
+
+      	header {
+      		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+      		-Server
+      	}
+
+      	log {
+      		output stdout
+      		format json
+      	}
+      }
 
 volumes:
   pgdata:

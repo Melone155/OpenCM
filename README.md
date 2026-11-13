@@ -359,7 +359,7 @@ flowchart LR
 
 ## Installation
 
-**Requirements:** a Linux server with Docker and Docker Compose, a DNS name and the ports **443/80** (web) and **8443** (agents) open.
+**Requirements:** a Linux server with Docker and Docker Compose (2.23 or newer), a DNS name (or just the server's IP address for a local test) and the ports **443/80** (web) and **8443** (agents) open. Only `docker-compose.yml` and `.env` are needed on the server.
 
 ```bash
 git clone https://github.com/Melone155/OpenCM.git opencm
