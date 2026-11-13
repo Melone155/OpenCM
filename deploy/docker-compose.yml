@@ -1,0 +1,154 @@
+# OpenCM – production stack
+#   cp .env.example .env   # fill in secrets
+#   docker compose up -d
+name: opencm
+
+x-server-env: &server-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgres://opencm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opencm
+  REDIS_URL: redis://redis:6379
+  PUBLIC_URL: https://${OPENCM_DOMAIN:?set OPENCM_DOMAIN}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+  LOGIN_RATE_LIMIT_PER_MIN: ${LOGIN_RATE_LIMIT_PER_MIN:-10}
+  BOOTSTRAP_ADMIN_USER: ${BOOTSTRAP_ADMIN_USER:-}
+  BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+  PKI_DIR: /data/pki
+  AGENT_DOWNLOAD_DIR: /data/files/agent
+  AGENT_PORT: 8443
+  AGENT_PUBLIC_URL: ${AGENT_PUBLIC_URL:-}
+  AGENT_TLS_HOSTNAMES: ${AGENT_TLS_HOSTNAMES:-}
+  AGENT_HEARTBEAT_SECONDS: ${AGENT_HEARTBEAT_SECONDS:-60}
+  AGENT_AUTO_UPDATE: ${AGENT_AUTO_UPDATE:-true}
+  SCRIPT_SELF_APPROVAL: ${SCRIPT_SELF_APPROVAL:-false}
+  TASK_OUTPUT_MAX_BYTES: ${TASK_OUTPUT_MAX_BYTES:-1048576}
+  TASK_TIMEOUT_GRACE_SECONDS: ${TASK_TIMEOUT_GRACE_SECONDS:-120}
+  VULN_FEEDS_ENABLED: ${VULN_FEEDS_ENABLED:-true}
+  NVD_API_KEY: ${NVD_API_KEY:-}
+  NVD_SYNC_INTERVAL_HOURS: ${NVD_SYNC_INTERVAL_HOURS:-2}
+  KEV_SYNC_INTERVAL_HOURS: ${KEV_SYNC_INTERVAL_HOURS:-6}
+  EPSS_SYNC_INTERVAL_HOURS: ${EPSS_SYNC_INTERVAL_HOURS:-24}
+  VULN_WEBHOOK_URL: ${VULN_WEBHOOK_URL:-}
+  VULN_WEBHOOK_SECRET: ${VULN_WEBHOOK_SECRET:-}
+  NODE_USE_ENV_PROXY: ${NODE_USE_ENV_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-postgres,redis,localhost}
+  FOUR_EYES_ENABLED: ${FOUR_EYES_ENABLED:-true}
+  FOUR_EYES_DEVICE_THRESHOLD: ${FOUR_EYES_DEVICE_THRESHOLD:-50}
+  FOUR_EYES_WINDOW_MINUTES: ${FOUR_EYES_WINDOW_MINUTES:-60}
+  MFA_REQUIRED: ${MFA_REQUIRED:-false}
+  API_TOKEN_MAX_DAYS: ${API_TOKEN_MAX_DAYS:-365}
+  LDAP_URL: ${LDAP_URL:-}
+  LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+  LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+  LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+  LDAP_USER_FILTER: ${LDAP_USER_FILTER:-}
+  LDAP_USERNAME_ATTRIBUTE: ${LDAP_USERNAME_ATTRIBUTE:-}
+  LDAP_DISPLAYNAME_ATTRIBUTE: ${LDAP_DISPLAYNAME_ATTRIBUTE:-}
+  LDAP_EMAIL_ATTRIBUTE: ${LDAP_EMAIL_ATTRIBUTE:-}
+  LDAP_GROUP_BASE_DN: ${LDAP_GROUP_BASE_DN:-}
+  LDAP_NESTED_GROUPS: ${LDAP_NESTED_GROUPS:-true}
+  LDAP_REQUIRE_GROUP: ${LDAP_REQUIRE_GROUP:-true}
+  LDAP_STARTTLS: ${LDAP_STARTTLS:-false}
+  LDAP_CA_FILE: ${LDAP_CA_FILE:-}
+  LDAP_TLS_INSECURE: ${LDAP_TLS_INSECURE:-false}
+  LDAP_TIMEOUT_MS: ${LDAP_TIMEOUT_MS:-10000}
+  PACKAGE_DIR: /data/files/packages
+  PACKAGE_MAX_BYTES: ${PACKAGE_MAX_BYTES:-4294967296}
+  PACKAGE_BANDWIDTH_KBPS: ${PACKAGE_BANDWIDTH_KBPS:-0}
+  PACKAGE_BANDWIDTH_PER_DEVICE_KBPS: ${PACKAGE_BANDWIDTH_PER_DEVICE_KBPS:-0}
+  PATCH_SCAN_INTERVAL_HOURS: ${PATCH_SCAN_INTERVAL_HOURS:-24}
+  WEBHOOK_ALLOW_HTTP: ${WEBHOOK_ALLOW_HTTP:-false}
+  WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-10000}
+  METRICS_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-400}
+  OSV_ENABLED: ${OSV_ENABLED:-true}
+  OSV_API_URL: ${OSV_API_URL:-}
+  OSV_SYNC_INTERVAL_HOURS: ${OSV_SYNC_INTERVAL_HOURS:-24}
+  SECURITY_AV_MAX_AGE_DAYS: ${SECURITY_AV_MAX_AGE_DAYS:-3}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: opencm
+      POSTGRES_USER: opencm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opencm -d opencm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  server:
+    image: ${OPENCM_REGISTRY:-opencm}/server:${OPENCM_VERSION:-latest}
+    build: { context: .., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    environment: *server-env
+    ports:
+      # mTLS agent endpoint – published directly (TLS must terminate in the server,
+      # a TLS-terminating proxy would strip the client certificate).
+      - "${AGENT_PORT_PUBLISHED:-8443}:8443"
+    volumes:
+      - files:/data/files
+      - pki:/data/pki
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    image: ${OPENCM_REGISTRY:-opencm}/server:${OPENCM_VERSION:-latest}
+    restart: unless-stopped
+    command: ["node", "src/worker.ts"]
+    environment: *server-env
+    volumes:
+      - files:/data/files
+      # integrity.key (hash seals) – created by the server on first start, read-only here
+      - pki:/data/pki:ro
+    healthcheck:
+      disable: true
+    depends_on:
+      server: { condition: service_healthy } # server runs the DB migrations first
+
+  web:
+    image: ${OPENCM_REGISTRY:-opencm}/web:${OPENCM_VERSION:-latest}
+    build: { context: .., dockerfile: web/Dockerfile }
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      OPENCM_DOMAIN: ${OPENCM_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [server, web]
+
+volumes:
+  pgdata:
+  redisdata:
+  files:
+  pki:
+  caddy_data:
+  caddy_config:

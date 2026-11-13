@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+deploy/.env
+deploy/backups/
+cli/bin/
+agent/bin/
+.DS_Store
+.vscode/
+.idea/
+playwright-report/
+test-results/
+
+.devdb/

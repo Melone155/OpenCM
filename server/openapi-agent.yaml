@@ -1,0 +1,242 @@
+openapi: 3.1.0
+info:
+  title: OpenCM Agent Endpoint
+  version: 0.3.0
+  description: |
+    Machine-to-machine API used by `opencm-agent` after enrolment (see `POST /api/v1/agent/enroll`
+    in openapi.yaml). Served on a dedicated port (`AGENT_PORT`, default 8443).
+
+    **Transport security:** TLS ≥ 1.2 with a **mandatory client certificate** issued by the
+    OpenCM agent CA. The server certificate is issued by the same CA; agents trust only that
+    CA (received during enrolment). Every request is additionally matched against the device's
+    current certificate fingerprint, so revoking or re-enrolling a device takes effect at once
+    (403 `device_not_authorized`).
+servers:
+  - url: https://{host}:8443/agent/v1
+    variables:
+      host: { default: cm.example.org }
+security:
+  - mutualTLS: []
+
+paths:
+  /heartbeat:
+    post:
+      operationId: heartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentVersion]
+              properties:
+                agentVersion: { type: string }
+                hostname: { type: string }
+                loggedOnUsers: { type: array, items: { type: string }, description: newly appearing users fire user_login jobs }
+                uptimeSeconds: { type: number }
+                agentStarted: { type: boolean, description: first heartbeat after agent start – fires agent_start jobs }
+      responses:
+        '200':
+          description: Instructions for the agent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [serverTime, heartbeatSeconds, inventoryRequested, renewCertificate]
+                properties:
+                  serverTime: { type: string, format: date-time }
+                  heartbeatSeconds: { type: integer }
+                  inventoryRequested: { type: boolean, description: Send a full inventory now }
+                  renewCertificate: { type: boolean, description: Certificate expires within 30 days – call /certificate/renew }
+                  update:
+                    description: |
+                      Newer agent available (AGENT_AUTO_UPDATE). Download via /update/download, check sha256 and the
+                      Ed25519 signature over "opencm-agent-update:v1:<os>:<arch>:<version>:<sha256>" before replacing the binary.
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        required: [version, sha256, sizeBytes, signature]
+                        properties:
+                          version: { type: string }
+                          sha256: { type: string }
+                          sizeBytes: { type: integer }
+                          signature: { type: string, description: base64 Ed25519 signature }
+        '400': { description: Invalid payload }
+        '403': { description: Unknown or revoked device }
+
+  /inventory:
+    post:
+      operationId: submitInventory
+      description: |
+        Full inventory snapshot. Schema = `InventorySnapshot` (openapi.yaml) plus `software[]`; max. 32 MiB.
+        Since agent 0.8: `os.distroId`, `software[].sourceName` / `sourceVersion` (dpkg source package,
+        rpm source RPM + epoch:version-release – used for OSV) and the optional `security` section
+        (`SecurityDetails`). Older agents simply omit these fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '204': { description: Stored }
+        '400': { description: Invalid payload }
+        '403': { description: Unknown or revoked device }
+
+  /certificate/renew:
+    post:
+      operationId: renewCertificate
+      description: New key pair + CSR → new certificate. The old certificate is superseded immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csr]
+              properties:
+                csr: { type: string }
+      responses:
+        '200':
+          description: New certificate
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [certificate, caCertificate, expiresAt]
+                properties:
+                  certificate: { type: string }
+                  caCertificate: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        '400': { description: Invalid CSR }
+        '403': { description: Unknown or revoked device }
+
+  /signing-key:
+    get:
+      operationId: getSigningKey
+      description: Fallback for agents enrolled before M2 (normally delivered at enrolment).
+      responses:
+        '200':
+          description: Key
+          content: { application/json: { schema: { type: object, required: [algorithm, publicKey], properties: { algorithm: { type: string, enum: [ed25519] }, publicKey: { type: string } } } } }
+        '403': { description: Unknown or revoked device }
+
+  /tasks/next:
+    get:
+      operationId: nextTask
+      summary: Long poll for the next runnable task
+      parameters:
+        - { name: wait, in: query, schema: { type: integer, minimum: 0, maximum: 30, default: 0 }, description: seconds to wait for a task }
+      responses:
+        '200':
+          description: |
+            Signed task envelope. `payload` is base64 of the UTF-8 JSON task; `signature` is the Ed25519
+            signature over exactly those bytes. The agent MUST verify the signature, `deviceId`, `expiresAt`
+            and every step's `sha256` before executing anything.
+            Payload: { v, taskId, runId, deviceId, attempt, issuedAt, expiresAt, timeoutSeconds, stopOnError,
+            steps: [{ position, name, version, interpreter, content, sha256, params, continueOnError, captureOutput, files? }] }
+            `v` is 1 for script steps and 2 as soon as a step carries `files: [{ sha256, name, sizeBytes }]`
+            (installer files). The agent downloads them via /files/{sha256} before the step, verifies the
+            SHA-256 and passes the paths as OPENCM_FILE_1, OPENCM_FILE_2, … Agents without file support
+            must refuse v2.
+          content: { application/json: { schema: { type: object, required: [payload, signature], properties: { payload: { type: string }, signature: { type: string } } } } }
+        '204': { description: No task within `wait` seconds }
+        '403': { description: Unknown or revoked device }
+
+  /tasks/{id}/start:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      operationId: startTask
+      responses:
+        '200': { description: Started, content: { application/json: { schema: { $ref: '#/components/schemas/CancelFlag' } } } }
+        '404': { description: Not a task of this device }
+        '409': { description: Task no longer active }
+
+  /tasks/{id}/output:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      operationId: appendTaskOutput
+      description: Output chunks (stored up to TASK_OUTPUT_MAX_BYTES). The response tells the agent whether to cancel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chunks]
+              properties:
+                chunks:
+                  type: array
+                  items: { type: object, required: [stream, data], properties: { stream: { type: string, enum: [stdout, stderr] }, data: { type: string } } }
+      responses:
+        '200': { description: Stored, content: { application/json: { schema: { $ref: '#/components/schemas/CancelFlag' } } } }
+        '404': { description: Not a task of this device }
+        '409': { description: Task no longer active }
+
+  /tasks/{id}/result:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      operationId: submitTaskResult
+      description: Final result. failed/timeout results are retried by the server according to the job options.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [succeeded, failed, timeout, cancelled] }
+                exitCode: { type: [integer, 'null'] }
+                error: { type: [string, 'null'] }
+                steps:
+                  type: array
+                  items:
+                    type: object
+                    required: [position, status, exitCode, durationMs]
+                    properties:
+                      position: { type: integer }
+                      status: { type: string, enum: [succeeded, failed, skipped, timeout, cancelled] }
+                      exitCode: { type: [integer, 'null'] }
+                      durationMs: { type: integer }
+                      stdoutTail: { type: string, description: 'last ≤ 8 KiB of stdout; required for steps with captureOutput' }
+      responses:
+        '204': { description: Stored }
+        '404': { description: Not a task of this device }
+        '409': { description: Task no longer active (e.g. timed out) }
+
+  /update/download:
+    get:
+      operationId: downloadUpdate
+      summary: Agent binary for this device's OS/arch
+      responses:
+        '200': { description: Binary, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '404': { description: No binary for this platform }
+
+  /files/{sha256}:
+    parameters: [{ name: sha256, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{64}$' } }]
+    get:
+      operationId: downloadFile
+      summary: Installer file of a package step
+      description: |
+        Only files referenced by a task that is currently dispatched to or running on this device.
+        Supports a single byte range (`Range: bytes=<start>-[<end>]`) to resume interrupted downloads.
+        Throughput is limited by PACKAGE_BANDWIDTH_KBPS (total) and PACKAGE_BANDWIDTH_PER_DEVICE_KBPS.
+      parameters:
+        - { name: Range, in: header, schema: { type: string, example: 'bytes=1048576-' } }
+      responses:
+        '200': { description: File, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '206': { description: Partial content, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '400': { description: Invalid hash }
+        '404': { description: Not assigned to an active task of this device, or missing }
+        '416': { description: Range not satisfiable }
+
+components:
+  schemas:
+    CancelFlag:
+      type: object
+      required: [cancel]
+      properties:
+        cancel: { type: boolean, description: the user cancelled the task – stop the process and report status cancelled }
+  securitySchemes:
+    mutualTLS:
+      type: mutualTLS

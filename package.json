@@ -1,0 +1,19 @@
+{
+  "name": "opencm",
+  "private": true,
+  "version": "0.8.0",
+  "license": "MIT",
+  "description": "OpenCM – self-hosted client management platform",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w server && npm run build -w web",
+    "test": "npm test -w server",
+    "lint": "npm run lint -w server && npm run lint -w web"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
