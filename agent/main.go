@@ -95,6 +95,7 @@ func enrollCmd(args []string) error {
 	server := fs.String("server", "", "server URL (https://…)")
 	token := fs.String("token", "", "enrollment token")
 	caFile := fs.String("ca-file", "", "additional CA certificate (PEM) for the server's public certificate")
+	pin := fs.String("server-pin", "", "sha256:<hex> of the server's agent CA and signing key (set by the generated install script; replaces the HTTPS certificate check)")
 	cfgPath := fs.String("config", config.DefaultPath(), "path to agent config")
 	_ = fs.Parse(args)
 	if *server == "" || *token == "" {
@@ -141,7 +142,7 @@ func enrollCmd(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	res, err := client.Enroll(ctx, *server, extraCA, client.EnrollRequest{
+	res, err := client.Enroll(ctx, *server, extraCA, *pin, client.EnrollRequest{
 		Token: *token, CSR: string(csrPEM), Hostname: hostname, OS: osName, OSVersion: inventory.OSVersion(),
 		Arch: runtime.GOARCH, AgentVersion: Version, MachineID: machineID,
 	})

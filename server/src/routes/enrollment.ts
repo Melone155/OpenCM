@@ -3,6 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../audit.ts';
 import { generateToken, hashToken } from '../auth/tokens.ts';
+import type { AgentBinaries } from '../agent/binaries.ts';
+import { INSTALL_OS, installCommands, installScript, serverPin, sha256Hex, type InstallOs } from '../agent/install.ts';
 import { agentPublicUrl, type Config } from '../config.ts';
 import { deviceGroupMembers, deviceGroups, devices, enrollmentTokens } from '../db/schema.ts';
 import { HttpError, IdParams, notFound, parse, Uuid } from '../http.ts';
@@ -44,33 +46,19 @@ const tokenColumns = {
   createdAt: enrollmentTokens.createdAt,
 };
 
-const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
-const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+export function enrollmentRoutes(app: FastifyInstance, config: Config, pki: Pki, signer: Signer, binaries: AgentBinaries) {
+  const pin = serverPin(pki.caCertPem, signer.publicKey);
+  const scriptFor = async (os: InstallOs) => installScript(os, config.PUBLIC_URL, pin, (await binaries.scan()).items);
 
-/** Copy-paste install commands (run as Administrator / root). */
-export function installCommands(publicUrl: string, token: string) {
-  const base = publicUrl.replace(/\/$/, '');
-  const windows = [
-    `$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'`,
-    `$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }`,
-    `$dir = Join-Path $env:ProgramFiles 'OpenCM'; New-Item -ItemType Directory -Force $dir | Out-Null`,
-    `Invoke-WebRequest -UseBasicParsing "${base}/api/v1/agent-downloads/windows/$arch" -OutFile "$dir\\opencm-agent.exe"`,
-    `& "$dir\\opencm-agent.exe" enroll --server ${psQuote(base)} --token ${psQuote(token)}`,
-    `& "$dir\\opencm-agent.exe" install`,
-  ].join('\n');
-  const unix = (os: 'linux' | 'macos') =>
-    [
-      `set -e`,
-      `ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')`,
-      `curl -fsSL "${base}/api/v1/agent-downloads/${os}/$ARCH" -o /usr/local/bin/opencm-agent`,
-      `chmod 755 /usr/local/bin/opencm-agent`,
-      `/usr/local/bin/opencm-agent enroll --server ${shQuote(base)} --token ${shQuote(token)}`,
-      `/usr/local/bin/opencm-agent install`,
-    ].join('\n');
-  return { windows, linux: unix('linux'), macos: unix('macos') };
-}
+  // Public – the generated install script contains no secret (the token is passed as argument).
+  app.get('/agent-install/:os', async (req, reply) => {
+    const { os } = parse(z.object({ os: z.enum(INSTALL_OS) }), req.params);
+    return reply
+      .header('content-type', os === 'windows' ? 'text/plain; charset=utf-8' : 'text/x-shellscript; charset=utf-8')
+      .header('cache-control', 'no-store')
+      .send(await scriptFor(os));
+  });
 
-export function enrollmentRoutes(app: FastifyInstance, config: Config, pki: Pki, signer: Signer) {
   app.get('/enrollment-tokens', { preHandler: app.requirePermission('devices:create') }, async () => ({
     items: await app.db.select(tokenColumns).from(enrollmentTokens).orderBy(desc(enrollmentTokens.createdAt)),
   }));
@@ -100,7 +88,9 @@ export function enrollmentRoutes(app: FastifyInstance, config: Config, pki: Pki,
       details: { name: body.name, maxUses: body.maxUses, expiresAt: row!.expiresAt },
       ip: req.ip,
     });
-    return reply.code(201).send({ ...row, token, installCommands: installCommands(config.PUBLIC_URL, token) });
+    const sha = {} as Record<InstallOs, string>;
+    for (const os of INSTALL_OS) sha[os] = sha256Hex(await scriptFor(os));
+    return reply.code(201).send({ ...row, token, installCommands: installCommands(config.PUBLIC_URL, token, sha) });
   });
 
   app.delete('/enrollment-tokens/:id', { preHandler: app.requirePermission('devices:create') }, async (req, reply) => {

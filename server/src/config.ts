@@ -23,6 +23,8 @@ const ConfigSchema = z.object({
   PKI_DIR: z.string().default('./data/pki'),
   /** directory with opencm-agent-<os>-<arch>[.exe] (+ optional version.txt) */
   AGENT_DOWNLOAD_DIR: z.string().default('./data/files/agent'),
+  /** binaries built into the server image; used when AGENT_DOWNLOAD_DIR has none */
+  AGENT_BUNDLED_DIR: z.string().default(''),
   /** mTLS listener for agents */
   AGENT_PORT: z.coerce.number().int().positive().default(8443),
   /** URL agents use for the mTLS endpoint; default https://<PUBLIC_URL host>:<AGENT_PORT> */

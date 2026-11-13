@@ -692,6 +692,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-install/{os}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                os: components["schemas"]["OS"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Generated install script (public, contains no secret)
+         * @description sh script (linux, macos) or PowerShell script (windows) used by the one-line install commands. It verifies the agent binary by SHA-256 and enrols with `--server-pin`, so the client does not need to trust the HTTPS certificate of the web front end. The enrollment token is passed as argument. The install command pins the SHA-256 of this script.
+         */
+        get: operations["getAgentInstallScript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/device-groups": {
         parameters: {
             query?: never;
@@ -5253,11 +5275,11 @@ export interface operations {
                     "application/json": components["schemas"]["EnrollmentToken"] & {
                         token: string;
                         installCommands: {
-                            /** @description PowerShell (as Administrator) */
+                            /** @description PowerShell one-liner (as Administrator); downloads and verifies the install script */
                             windows: string;
-                            /** @description sh (as root) */
+                            /** @description sh one-liner (as root); downloads and verifies the install script */
                             linux: string;
-                            /** @description sh (as root) */
+                            /** @description sh one-liner (as root); downloads and verifies the install script */
                             macos: string;
                         };
                     };
@@ -5397,6 +5419,30 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAgentInstallScript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                os: components["schemas"]["OS"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Script */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/x-shellscript": string;
+                    "text/plain": string;
+                };
+            };
+            400: components["responses"]["ValidationError"];
         };
     };
     listDeviceGroups: {

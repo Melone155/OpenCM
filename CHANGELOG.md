@@ -11,6 +11,15 @@ Regressionstests: `server/test/review-fixes.test.ts`.
 ### Hinzugefügt
 - Eigenes OpenCM-Logo (`docs/images/`): in README, Doku, Web-UI (Favicon, Seitenleiste, Anmeldeseite) und API-Doku (`/api/docs`, Logo, Favicon und Titel „OpenCM API“).
 
+- **Agent-Installation mit einem Befehl:** Der Befehl unter „Geräte hinzufügen“ ist jetzt eine Zeile. Er lädt ein vom Server erzeugtes Skript (`GET /api/v1/agent-install/{os}`), prüft dessen SHA-256 und führt es in einer eigenen Shell aus – Fehler schließen die SSH-Sitzung nicht mehr (vorher `set -e` in der Login-Shell). Funktioniert auch mit lokalem/selbst signiertem Zertifikat der Weboberfläche (IP-Adresse): Binary per SHA-256 geprüft, Registrierung mit neuem Agent-Parameter `--server-pin` (CA + Signaturschlüssel gepinnt).
+- Das Server-Image enthält die Agent-Binaries aller Plattformen (`AGENT_BUNDLED_DIR`); manuelles Kopieren nach `/data/files/agent` entfällt. Eigene Binaries dort haben weiter Vorrang.
+- Docker-Images werden in der GitHub Container Registry veröffentlicht (`ghcr.io/melone155/opencm-server`, `-web`); die Compose-Datei nutzt sie. Die Caddy-Konfiguration ist in `docker-compose.yml` eingebettet – auf dem Server genügen `docker-compose.yml` und `.env`, auch mit einer IP-Adresse statt Domain.
+
+### Behoben
+- Mit dem `postgres`-Treiber (Produktion) wurden `jsonb`-Strings doppelt geparst: `"131.0"` kam als Zahl `131` zurück (z. B. Versionen in der Geräte-Historie). Betraf nicht PGlite.
+- CLI: `--target all` wurde als Hostname „all“ behandelt.
+- Images ohne `VERSION` (`dev`) werden Agents nicht mehr als Update angeboten.
+
 ### Sicherheit
 - **REV-001:** Passwort setzen, Deaktivieren und Löschen eines Benutzers verlangen jetzt, dass der Ausführende alle Rechte des Zielbenutzers selbst hält. Bisher konnte jeder mit `users:update` das Administrator-Konto übernehmen. Dasselbe gilt für das Aufnehmen eines Benutzers in eine Gruppe mit Rollen (`groupIds` in `POST`/`PATCH /users`).
 - **REV-002:** Der MFA-Reset für andere Benutzer unterliegt derselben Prüfung.

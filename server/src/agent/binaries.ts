@@ -21,13 +21,16 @@ export interface AgentBinary {
 
 /**
  * Agent binaries placed in AGENT_DOWNLOAD_DIR by the release pipeline
- * (opencm-agent-<goos>-<goarch>[.exe], optional version.txt).
+ * (opencm-agent-<goos>-<goarch>[.exe], optional version.txt). If that directory holds
+ * no binaries, the ones built into the server image (AGENT_BUNDLED_DIR) are served.
  */
 export class AgentBinaries {
   private shaCache = new Map<string, { mtimeMs: number; sha256: string }>();
   private dir: string;
-  constructor(dir: string) {
+  private fallbackDir: string;
+  constructor(dir: string, fallbackDir = '') {
     this.dir = dir;
+    this.fallbackDir = fallbackDir;
   }
 
   private async sha256(path: string, mtimeMs: number): Promise<string> {
@@ -41,18 +44,24 @@ export class AgentBinaries {
   }
 
   async scan(): Promise<{ version: string | null; items: AgentBinary[] }> {
+    const own = await this.scanDir(this.dir);
+    if (own.items.length || !this.fallbackDir) return own;
+    return this.scanDir(this.fallbackDir);
+  }
+
+  private async scanDir(dir: string): Promise<{ version: string | null; items: AgentBinary[] }> {
     let names: string[];
     try {
-      names = await readdir(this.dir);
+      names = await readdir(dir);
     } catch {
       return { version: null, items: [] };
     }
-    const version = await readFile(join(this.dir, 'version.txt'), 'utf8').then((s) => s.trim() || null, () => null);
+    const version = await readFile(join(dir, 'version.txt'), 'utf8').then((s) => s.trim() || null, () => null);
     const items: AgentBinary[] = [];
     for (const file of names) {
       const m = FILE_RE.exec(file);
       if (!m) continue;
-      const path = join(this.dir, file);
+      const path = join(dir, file);
       const st = await stat(path);
       items.push({
         os: m[1] === 'darwin' ? 'macos' : (m[1] as AgentOs),

@@ -5,8 +5,11 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,13 +106,31 @@ type EnrollResponse struct {
 	SigningPublicKey     string    `json:"signingPublicKey"`
 }
 
+// ServerPin is the fingerprint of what an agent must trust after enrolment: the CA of the
+// mTLS endpoint and the task signing key. Format "sha256:<hex>" over
+// caCertificate + "\n" + signingPublicKey, exactly as returned by the enroll endpoint.
+// Must stay in sync with serverPin() in server/src/routes/enrollment.ts.
+func ServerPin(caCertificate, signingPublicKey string) string {
+	sum := sha256.Sum256([]byte(caCertificate + "\n" + signingPublicKey))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 // Enroll exchanges the token + CSR for a certificate. serverURL must be HTTPS;
 // extraCA (optional PEM) is trusted in addition to the system roots, for servers
 // with an internal CA.
-func Enroll(ctx context.Context, serverURL string, extraCA []byte, req EnrollRequest) (*EnrollResponse, error) {
+//
+// With pin (see ServerPin) the HTTPS certificate of serverURL is not verified – e.g. a
+// reverse proxy with a self-signed/local CA. Instead the response must match the pin, which
+// the generated install script got from the server over a checksum-verified channel. A
+// man in the middle could then read the token, but not make the agent trust him: all later
+// traffic uses mTLS against the pinned CA, and tasks must carry the pinned signature.
+func Enroll(ctx context.Context, serverURL string, extraCA []byte, pin string, req EnrollRequest) (*EnrollResponse, error) {
 	u, err := url.Parse(serverURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return nil, fmt.Errorf("server URL must be https://…, got %q", serverURL)
+	}
+	if pin != "" && !strings.HasPrefix(pin, "sha256:") {
+		return nil, fmt.Errorf("--server-pin must look like sha256:<hex>, got %q", pin)
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || pool == nil {
@@ -120,6 +141,9 @@ func Enroll(ctx context.Context, serverURL string, extraCA []byte, req EnrollReq
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	if pin != "" {
+		tr.TLSClientConfig.InsecureSkipVerify = true // replaced by the pin check below
+	}
 	c := &http.Client{Timeout: 60 * time.Second, Transport: tr}
 	res := &EnrollResponse{}
 	if err := doJSON(ctx, c, http.MethodPost, strings.TrimRight(serverURL, "/")+"/api/v1/agent/enroll", req, res); err != nil {
@@ -127,6 +151,12 @@ func Enroll(ctx context.Context, serverURL string, extraCA []byte, req EnrollReq
 	}
 	if res.DeviceID == "" || res.Certificate == "" || res.AgentURL == "" {
 		return nil, errors.New("incomplete enrolment response")
+	}
+	if pin != "" {
+		got := ServerPin(res.CACertificate, res.SigningPublicKey)
+		if res.SigningPublicKey == "" || subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(pin))) != 1 {
+			return nil, errors.New("server pin mismatch – the response did not come from the expected OpenCM server")
+		}
 	}
 	return res, nil
 }

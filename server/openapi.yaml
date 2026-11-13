@@ -931,9 +931,9 @@ paths:
                         type: object
                         required: [windows, linux, macos]
                         properties:
-                          windows: { type: string, description: PowerShell (as Administrator) }
-                          linux: { type: string, description: sh (as root) }
-                          macos: { type: string, description: sh (as root) }
+                          windows: { type: string, description: 'PowerShell one-liner (as Administrator); downloads and verifies the install script' }
+                          linux: { type: string, description: 'sh one-liner (as root); downloads and verifies the install script' }
+                          macos: { type: string, description: 'sh one-liner (as root); downloads and verifies the install script' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1047,6 +1047,29 @@ paths:
               schema: { type: string, format: binary }
         '400': { $ref: '#/components/responses/ValidationError' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /agent-install/{os}:
+    parameters:
+      - { name: os, in: path, required: true, schema: { $ref: '#/components/schemas/OS' } }
+    get:
+      tags: [enrollment]
+      operationId: getAgentInstallScript
+      summary: Generated install script (public, contains no secret)
+      description: >-
+        sh script (linux, macos) or PowerShell script (windows) used by the one-line install
+        commands. It verifies the agent binary by SHA-256 and enrols with `--server-pin`, so the
+        client does not need to trust the HTTPS certificate of the web front end. The enrollment
+        token is passed as argument. The install command pins the SHA-256 of this script.
+      security: []
+      responses:
+        '200':
+          description: Script
+          content:
+            text/x-shellscript:
+              schema: { type: string }
+            text/plain:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   # ------------------------------------------------------------------ M2: device groups
   /device-groups:

@@ -386,7 +386,7 @@ Then open `https://<OPENCM_DOMAIN>` and sign in with the bootstrap admin. The in
 ## Enrolling devices
 
 1. In the web UI go to **Devices → Add devices** and create an enrollment token (validity, maximum number of devices, optional target group).
-2. Run the displayed command on the device: in PowerShell as administrator on Windows, as root on Linux and macOS. It downloads the agent, enrolls it and installs the service.
+2. Run the displayed one-line command on the device: in PowerShell as administrator on Windows, as root on Linux and macOS. It downloads the agent, enrolls it and installs the service. It also works when the browser warns about the certificate (IP address, local CA): the install script and the agent are verified by SHA-256 checksums, and the agent pins the server's CA and signing key (`--server-pin`). Errors are shown as a message and never close your SSH session.
 3. The device appears within seconds; the first inventory follows with the first heartbeat.
 
 **[Image: "Add devices" page with token and copy-ready install commands for Windows, Linux and macOS]**

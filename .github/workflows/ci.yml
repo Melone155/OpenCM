@@ -139,6 +139,8 @@ jobs:
           for img in server web; do
             echo "$img=$REGISTRY/opencm-$img:latest,$REGISTRY/opencm-$img:$extra" >> "$GITHUB_OUTPUT"
           done
+          # version of the agent binaries bundled in the server image
+          echo "version=$extra" >> "$GITHUB_OUTPUT"
       - name: Build server image
         uses: docker/build-push-action@v6
         with:
@@ -146,6 +148,7 @@ jobs:
           file: server/Dockerfile
           push: ${{ env.PUBLISH == 'true' }}
           tags: ${{ steps.tags.outputs.server }}
+          build-args: VERSION=${{ steps.tags.outputs.version }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
       - name: Build web image
         uses: docker/build-push-action@v6

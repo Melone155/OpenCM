@@ -133,8 +133,9 @@ export async function buildApp({ config, db, pki, signer, directory, webhookDeps
       groupRoutes(api);
       auditRoutes(api);
       deviceRoutes(api, config);
-      enrollmentRoutes(api, config, pki, signer);
-      downloadRoutes(api, new AgentBinaries(config.AGENT_DOWNLOAD_DIR));
+      const agentBinaries = new AgentBinaries(config.AGENT_DOWNLOAD_DIR, config.AGENT_BUNDLED_DIR);
+      enrollmentRoutes(api, config, pki, signer, agentBinaries);
+      downloadRoutes(api, agentBinaries);
       deviceGroupRoutes(api, config);
       customFieldRoutes(api);
       scriptRoutes(api, config);

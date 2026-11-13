@@ -1,5 +1,23 @@
 # Build context: repository root  (docker build -f server/Dockerfile .)
 # The server runs TypeScript directly via Node's built-in type stripping – no build step.
+
+# Agent binaries for all platforms, served by the server (AGENT_BUNDLED_DIR) unless
+# AGENT_DOWNLOAD_DIR contains its own. VERSION ends up in the binaries and version.txt
+# (agents update themselves to it); "dev" builds are never offered as updates.
+FROM golang:1.23-alpine AS agent
+ARG VERSION=dev
+WORKDIR /src
+COPY agent/go.mod agent/go.sum ./
+RUN go mod download
+COPY agent/ ./
+RUN set -e; mkdir -p /out; \
+    for os in linux windows darwin; do for arch in amd64 arm64; do \
+      ext=""; [ "$os" = windows ] && ext=".exe"; \
+      CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.Version=$VERSION" \
+        -o /out/opencm-agent-$os-$arch$ext . ; \
+    done; done; \
+    echo "$VERSION" > /out/version.txt
+
 FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -16,6 +34,8 @@ COPY --from=deps /app/server/node_modules ./server/node_modules
 COPY server/package.json server/openapi.yaml ./server/
 COPY server/drizzle ./server/drizzle
 COPY server/src ./server/src
+COPY --from=agent /out /app/agent-dist
+ENV AGENT_BUNDLED_DIR=/app/agent-dist
 RUN mkdir -p /data/files /data/pki && chown -R node:node /data
 USER node
 WORKDIR /app/server

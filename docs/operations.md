@@ -19,15 +19,19 @@ Siehe `README.md` → Schnellstart. Kurzfassung: `deploy/.env` aus `.env.example
 - **`ca.key` ist das wichtigste Geheimnis der Installation.** Es ist im Backup enthalten (`backup.sh`), das Backup muss deshalb verschlüsselt und zugriffsbeschränkt abgelegt werden. Geht die CA verloren, müssen alle Agents neu registriert werden.
 
 ### Agent-Binaries bereitstellen
-Die CI baut `opencm-agent-<os>-<arch>[.exe]` für windows, linux und darwin (amd64/arm64) und legt sie als Artefakt `binaries` ab (inkl. `version.txt` und `SHA256SUMS`). Bereitstellung auf dem Server:
+Das Server-Image enthält die Agent-Binaries für windows, linux und darwin (amd64/arm64), gebaut beim Docker-Build (`AGENT_BUNDLED_DIR=/app/agent-dist`). Es ist also nichts zu tun. Die Version der Binaries ist die des Images (`sha-<commit>` bzw. die Release-Version); Images, die ohne `VERSION` gebaut wurden, tragen `dev` und werden Agents nie als Update angeboten.
+
+Eigene Binaries (z. B. das CI-Artefakt `binaries` mit `version.txt`) haben Vorrang, sobald `AGENT_DOWNLOAD_DIR` welche enthält:
 ```bash
 docker compose cp ./dist/. server:/data/files/agent/
 ```
-Danach sind sie unter `/api/v1/agent-downloads` gelistet und im Web unter „Geräte hinzufügen“ sichtbar.
+Sie sind unter `/api/v1/agent-downloads` gelistet und im Web unter „Geräte hinzufügen“ sichtbar.
 
 ### Geräte registrieren
 1. Web → **Geräte hinzufügen** → Token erstellen (Gültigkeit, max. Anzahl Geräte), oder per CLI: `opencm enrollment-tokens create --name "Rollout" --max-uses 25`.
-2. Den angezeigten Befehl auf dem Gerät ausführen: unter Windows in einer PowerShell als Administrator, unter Linux und macOS als root. Er lädt den Agent, registriert ihn und installiert den Dienst.
+2. Den angezeigten einzeiligen Befehl auf dem Gerät ausführen: unter Windows in einer PowerShell als Administrator, unter Linux und macOS als root. Er lädt den Agent, registriert ihn und installiert den Dienst.
+
+   Ablauf: Der Befehl lädt `/api/v1/agent-install/<os>` (ein vom Server erzeugtes Skript ohne Geheimnisse), prüft dessen SHA-256 gegen den Wert im Befehl und führt es in einer eigenen Shell aus. Das Skript lädt das Binary, prüft dessen SHA-256 und registriert den Agent mit `--server-pin sha256:…` (Hash über CA-Zertifikat des Agent-Endpoints und Signaturschlüssel). Das HTTPS-Zertifikat der Weboberfläche muss der Client deshalb nicht kennen (`curl -k` / ohne Zertifikatsprüfung). Ein Angreifer im Netz könnte dabei höchstens das Token mitlesen, den Agent aber nicht auf einen fremden Server lenken: Alle weiteren Verbindungen laufen per mTLS gegen die gepinnte CA, Aufträge brauchen die gepinnte Signatur. Ändern sich die Binaries (neues Image), wird der Befehl ungültig (Prüfsummenfehler) – dann ein neues Token erzeugen.
 3. Das Gerät erscheint nach wenigen Sekunden in der Geräteliste. Das erste Inventar folgt mit dem ersten Heartbeat.
 
 Manuell:

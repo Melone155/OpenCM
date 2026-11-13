@@ -94,7 +94,7 @@ const userSet = (s: string | null | undefined) =>
  * fingerprint, so revocation/re-enrolment takes effect immediately.
  */
 export async function buildAgentServer({ config, db, pki, signer, logger = true }: AgentServerOptions): Promise<FastifyInstance> {
-  const binaries = new AgentBinaries(config.AGENT_DOWNLOAD_DIR);
+  const binaries = new AgentBinaries(config.AGENT_DOWNLOAD_DIR, config.AGENT_BUNDLED_DIR);
   const store = new PackageStore(config.PACKAGE_DIR);
   const limiter = new BandwidthLimiter(config.PACKAGE_BANDWIDTH_KBPS, config.PACKAGE_BANDWIDTH_PER_DEVICE_KBPS);
   const app = Fastify({
@@ -139,7 +139,8 @@ export async function buildAgentServer({ config, db, pki, signer, logger = true 
   async function updateOffer(d: AgentIdentity, agentVersion: string) {
     if (!config.AGENT_AUTO_UPDATE || agentVersion === 'dev') return null;
     const { version, binary } = await binaries.find(d.os, d.arch);
-    if (!version || !binary || version === agentVersion) return null;
+    // "dev": binaries of an image built without VERSION – never offered as an update
+    if (!version || version === 'dev' || !binary || version === agentVersion) return null;
     return {
       version,
       sha256: binary.sha256,

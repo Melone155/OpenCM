@@ -40,10 +40,13 @@ describe('M1: enrollment, mTLS agent endpoint, inventory', () => {
   it('creates enrollment tokens with install commands; token is shown once', async () => {
     const t = await createEnrollmentToken(ctx, { name: 'Standort Nord', maxUses: 5, expiresInHours: 48 });
     assert.match(t.token, /^oce_/);
-    assert.match(t.installCommands.windows, /agent-downloads\/windows\/\$arch/);
-    assert.ok(t.installCommands.windows.includes(`--token '${t.token}'`));
-    assert.ok(t.installCommands.linux.includes('/api/v1/agent-downloads/linux/$ARCH'));
-    assert.ok(t.installCommands.macos.includes('/agent-downloads/macos/'));
+    assert.ok(t.installCommands.windows.includes('/api/v1/agent-install/windows'));
+    assert.ok(t.installCommands.windows.includes(`-Token '${t.token}'`));
+    assert.ok(t.installCommands.linux.includes('/api/v1/agent-install/linux'));
+    assert.ok(t.installCommands.linux.endsWith(`sh "$f" '${t.token}'; rm -f "$f"`));
+    assert.ok(t.installCommands.macos.includes('shasum -a 256 -c -'));
+    // one line each for sh (pasting must not leave half-run commands behind); no `set -e` that would close the shell
+    assert.ok(!t.installCommands.linux.includes('\n') && !t.installCommands.linux.includes('set -e'));
     const list = (await api('GET', '/enrollment-tokens')).json();
     const listed = list.items.find((i: { id: string }) => i.id === t.id);
     assert.equal(listed.maxUses, 5);
@@ -319,5 +322,61 @@ describe('M1: agent downloads', () => {
     assert.match(String(res.headers['content-disposition']), /opencm-agent\.exe/);
     assert.equal((await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-downloads/linux/arm64' })).statusCode, 404);
     assert.equal((await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-downloads/..%2F..%2Fetc/passwd' })).statusCode, 400);
+  });
+
+  it('install commands pin the served install script; the script pins binary and server', async () => {
+    const { createHash } = await import('node:crypto');
+    const { serverPin } = await import('../src/agent/install.ts');
+    const sha = (s: string) => createHash('sha256').update(s).digest('hex');
+    const t = await createEnrollmentToken(ctx, { name: 'one-liner' });
+
+    for (const os of ['linux', 'macos', 'windows'] as const) {
+      const res = await ctx.app.inject({ method: 'GET', url: `/api/v1/agent-install/${os}` });
+      assert.equal(res.statusCode, 200);
+      // the command contains the hash of exactly these bytes
+      assert.ok(t.installCommands[os].toLowerCase().includes(sha(res.body)), `${os}: script hash not pinned`);
+      // enrolment is pinned to the agent CA + signing key; the token is not part of the script
+      assert.ok(res.body.includes(`--server-pin '${serverPin(ctx.pki.caCertPem, ctx.signer.publicKey)}'`), os);
+      assert.ok(!res.body.includes(t.token));
+      assert.ok(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(res.body), `${os}: script must be ASCII`);
+    }
+    const win = (await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-install/windows' })).body;
+    assert.ok(win.includes(`amd64 = '${sha('MZ-fake-binary')}'; arm64 = ''`), 'binary checksum embedded');
+    const mac = (await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-install/macos' })).body;
+    assert.ok(mac.includes(`arm64) SHA='${sha('fake-macho')}'`));
+    const linux = (await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-install/linux' })).body;
+    assert.ok(linux.includes(`amd64) SHA='' ;;`), 'missing binaries lead to a clear error in the script');
+    assert.equal((await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-install/solaris' })).statusCode, 400);
+  });
+
+  it('pin vector matches the agent implementation (client.ServerPin)', async () => {
+    const { serverPin } = await import('../src/agent/install.ts');
+    assert.equal(serverPin('CA', 'KEY'), 'sha256:01dcf5d857839a9c80725000b9c2dfda46c7511ac4d9b2a05df9c544a91261f6');
+  });
+});
+
+describe('M1: agent binaries bundled in the image', () => {
+  let ctx: TestCtx;
+  let bundled: string;
+  before(async () => {
+    bundled = mkdtempSync(join(tmpdir(), 'opencm-bundled-'));
+    writeFileSync(join(bundled, 'opencm-agent-linux-amd64'), 'bundled-elf');
+    writeFileSync(join(bundled, 'version.txt'), '1.0.0\n');
+    ctx = await setup({ AGENT_BUNDLED_DIR: bundled });
+  });
+  after(async () => ctx.close());
+
+  it('serves the bundled binaries while AGENT_DOWNLOAD_DIR is empty, and prefers the download dir', async () => {
+    let body = (await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-downloads' })).json();
+    assert.equal(body.version, '1.0.0');
+    assert.deepEqual(body.items.map((i: { os: string; arch: string }) => `${i.os}/${i.arch}`), ['linux/amd64']);
+    assert.equal((await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-downloads/linux/amd64' })).body, 'bundled-elf');
+
+    mkdirSync(ctx.config.AGENT_DOWNLOAD_DIR, { recursive: true });
+    writeFileSync(join(ctx.config.AGENT_DOWNLOAD_DIR, 'opencm-agent-linux-amd64'), 'own-elf');
+    writeFileSync(join(ctx.config.AGENT_DOWNLOAD_DIR, 'version.txt'), '1.1.0\n');
+    body = (await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-downloads' })).json();
+    assert.equal(body.version, '1.1.0');
+    assert.equal((await ctx.app.inject({ method: 'GET', url: '/api/v1/agent-downloads/linux/amd64' })).body, 'own-elf');
   });
 });
