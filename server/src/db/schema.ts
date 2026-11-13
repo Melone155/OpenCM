@@ -240,7 +240,7 @@ export const enrollmentTokens = pgTable('enrollment_tokens', {
   deviceGroupId: uuid('device_group_id').references(() => deviceGroups.id, { onDelete: 'set null' }),
   maxUses: integer('max_uses'), // null = unlimited
   uses: integer('uses').notNull().default(0),
-  expiresAt: ts('expires_at').notNull(),
+  expiresAt: ts('expires_at'), // null = never expires
   revokedAt: ts('revoked_at'),
   createdAt: createdAt(),
 });

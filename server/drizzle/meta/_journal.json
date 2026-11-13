@@ -64,6 +64,13 @@
       "when": 1763251200000,
       "tag": "0008_osv_security_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1763337600000,
+      "tag": "0009_enrollment_token_unlimited",
+      "breakpoints": true
     }
   ]
 }

@@ -385,7 +385,7 @@ Danach `https://<OPENCM_DOMAIN>` öffnen und mit dem Bootstrap-Admin anmelden. D
 
 ## Geräte aufnehmen
 
-1. In der Weboberfläche **Geräte → Geräte hinzufügen** öffnen und ein Registrierungs-Token erstellen (Gültigkeit, maximale Anzahl Geräte, optional Zielgruppe).
+1. In der Weboberfläche **Geräte → Geräte hinzufügen** öffnen und ein Registrierungs-Token erstellen (Gültigkeit bis 1 Jahr oder unbegrenzt, maximale Anzahl Geräte, optional Zielgruppe). Ein gelöschter Token funktioniert sofort nicht mehr; registrierte Geräte bleiben erhalten.
 2. Den angezeigten einzeiligen Befehl auf dem Gerät ausführen: unter Windows in einer PowerShell als Administrator, unter Linux und macOS als root. Er lädt den Agent, registriert ihn und installiert den Dienst. Das klappt auch, wenn der Browser vor dem Zertifikat warnt (IP-Adresse, lokale CA): Installationsskript und Agent werden über SHA-256-Prüfsummen verifiziert, und der Agent pinnt CA und Signaturschlüssel des Servers (`--server-pin`). Fehler erscheinen als Meldung und schließen die SSH-Sitzung nicht.
 3. Das Gerät erscheint nach wenigen Sekunden; das erste Inventar folgt mit dem ersten Heartbeat.
 

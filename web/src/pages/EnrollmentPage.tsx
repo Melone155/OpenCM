@@ -21,7 +21,7 @@ export function EnrollmentPage() {
     setError(null);
     try {
       const res = await unwrap(
-        api.POST('/enrollment-tokens', { body: { name, expiresInHours: hours, maxUses: maxUses ? Number(maxUses) : null } }),
+        api.POST('/enrollment-tokens', { body: { name, expiresInHours: hours || null, maxUses: maxUses ? Number(maxUses) : null } }),
       );
       setCreated(res);
       setName('');
@@ -41,6 +41,17 @@ export function EnrollmentPage() {
     }
   }
 
+  async function remove(id: string, label: string) {
+    if (!window.confirm(`Token „${label}“ löschen? Er funktioniert danach nicht mehr. Bereits registrierte Geräte bleiben erhalten.`)) return;
+    setError(null);
+    try {
+      await unwrap(api.DELETE('/enrollment-tokens/{id}', { params: { path: { id } } }));
+      await tokens.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   const now = Date.now();
   return (
     <>
@@ -55,6 +66,7 @@ export function EnrollmentPage() {
             <option value={168}>7 Tage</option>
             <option value={720}>30 Tage</option>
             <option value={8760}>1 Jahr</option>
+            <option value={0}>unbegrenzt</option>
           </select>
         </label>
         <input type="number" min={1} placeholder="max. Geräte (leer = unbegrenzt)" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
@@ -97,9 +109,8 @@ export function EnrollmentPage() {
           </thead>
           <tbody>
             {tokens.data?.items.map((t) => {
-              const expired = new Date(t.expiresAt).getTime() < now;
+              const expired = t.expiresAt != null && new Date(t.expiresAt).getTime() < now;
               const usedUp = t.maxUses !== null && t.maxUses !== undefined && t.uses >= t.maxUses;
-              const active = !t.revokedAt && !expired && !usedUp;
               return (
                 <tr key={t.id}>
                   <td>{t.name}</td>
@@ -107,7 +118,7 @@ export function EnrollmentPage() {
                     {t.uses}
                     {t.maxUses ? ` / ${t.maxUses}` : ''}
                   </td>
-                  <td>{fmtDate(t.expiresAt)}</td>
+                  <td>{t.expiresAt ? fmtDate(t.expiresAt) : <span className="muted">läuft nicht ab</span>}</td>
                   <td>
                     {t.revokedAt ? (
                       <span className="badge">widerrufen</span>
@@ -120,18 +131,9 @@ export function EnrollmentPage() {
                     )}
                   </td>
                   <td className="actions">
-                    {active && (
-                      <button
-                        className="link danger"
-                        onClick={() =>
-                          void unwrap(api.DELETE('/enrollment-tokens/{id}', { params: { path: { id: t.id } } }))
-                            .then(() => tokens.reload())
-                            .catch((e: Error) => setError(e.message))
-                        }
-                      >
-                        Widerrufen
-                      </button>
-                    )}
+                    <button className="link danger" onClick={() => void remove(t.id, t.name)}>
+                      Löschen
+                    </button>
                   </td>
                 </tr>
               );
@@ -143,8 +145,9 @@ export function EnrollmentPage() {
       <h2>Agent-Downloads {downloads.data?.version && <span className="muted">Version {downloads.data.version}</span>}</h2>
       {downloads.data && downloads.data.items.length === 0 ? (
         <p className="muted">
-          Auf dem Server liegen noch keine Agent-Binaries. Die CI-Artefakte <code>opencm-agent-&lt;os&gt;-&lt;arch&gt;</code> in das Volume{' '}
-          <code>files</code> unter <code>agent/</code> kopieren (siehe docs/operations.md).
+          Auf dem Server liegen keine Agent-Binaries. Die offiziellen Server-Images enthalten sie; bei einem eigenen Build ohne Agent die
+          CI-Artefakte <code>opencm-agent-&lt;os&gt;-&lt;arch&gt;</code> in das Volume <code>files</code> unter <code>agent/</code> kopieren (siehe
+          docs/operations.md).
         </p>
       ) : (
         <div className="table-scroll">

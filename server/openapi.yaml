@@ -912,7 +912,7 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                expiresInHours: { type: integer, minimum: 1, maximum: 8760, default: 168 }
+                expiresInHours: { type: [integer, 'null'], minimum: 1, maximum: 8760, default: 168, description: 'Validity in hours; null = never expires' }
                 maxUses: { type: [integer, 'null'], minimum: 1, description: null = unlimited }
                 deviceGroupId: { type: [string, 'null'], format: uuid, description: Enrolled devices are added to this group }
       responses:
@@ -943,10 +943,11 @@ paths:
       - $ref: '#/components/parameters/Id'
     delete:
       tags: [enrollment]
-      operationId: revokeEnrollmentToken
+      operationId: deleteEnrollmentToken
+      summary: Delete a token (stops working immediately; enrolled devices are not affected)
       x-permission: devices:create
       responses:
-        '204': { description: Revoked }
+        '204': { description: Deleted }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -3666,7 +3667,7 @@ components:
         deviceGroupId: { type: [string, 'null'], format: uuid }
         maxUses: { type: [integer, 'null'] }
         uses: { type: integer }
-        expiresAt: { type: string, format: date-time }
+        expiresAt: { type: [string, 'null'], format: date-time, description: null = never expires }
         revokedAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
 

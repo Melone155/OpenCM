@@ -15,7 +15,8 @@ import { emitEvent } from '../webhooks/events.ts';
 
 const CreateToken = z.object({
   name: z.string().trim().min(1).max(100),
-  expiresInHours: z.number().int().min(1).max(24 * 365).default(24 * 7),
+  // null = never expires
+  expiresInHours: z.number().int().min(1).max(24 * 365).nullable().default(24 * 7),
   maxUses: z.number().int().min(1).max(1_000_000).nullable().default(null),
   deviceGroupId: Uuid.nullable().default(null),
 });
@@ -78,7 +79,7 @@ export function enrollmentRoutes(app: FastifyInstance, config: Config, pki: Pki,
         createdBy: principalOf(req).userId,
         deviceGroupId: body.deviceGroupId,
         maxUses: body.maxUses,
-        expiresAt: new Date(Date.now() + body.expiresInHours * 3600_000),
+        expiresAt: body.expiresInHours === null ? null : new Date(Date.now() + body.expiresInHours * 3600_000),
       })
       .returning(tokenColumns);
     await writeAudit(app.db, actorOf(req), {
@@ -93,19 +94,22 @@ export function enrollmentRoutes(app: FastifyInstance, config: Config, pki: Pki,
     return reply.code(201).send({ ...row, token, installCommands: installCommands(config.PUBLIC_URL, token, sha) });
   });
 
+  // Deletes the token: it stops working immediately and disappears from the list.
+  // Enrolled devices are not affected; the audit log keeps the record.
   app.delete('/enrollment-tokens/:id', { preHandler: app.requirePermission('devices:create') }, async (req, reply) => {
     const { id } = parse(IdParams, req.params);
     const [row] = await app.db
-      .update(enrollmentTokens)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(enrollmentTokens.id, id), isNull(enrollmentTokens.revokedAt)))
-      .returning({ id: enrollmentTokens.id, name: enrollmentTokens.name });
-    if (!row) {
-      const [exists] = await app.db.select({ id: enrollmentTokens.id }).from(enrollmentTokens).where(eq(enrollmentTokens.id, id));
-      if (!exists) throw notFound('Enrollment token');
-    } else {
-      await writeAudit(app.db, actorOf(req), { action: 'enrollment_token.revoke', targetType: 'enrollment_token', targetId: id, details: { name: row.name }, ip: req.ip });
-    }
+      .delete(enrollmentTokens)
+      .where(eq(enrollmentTokens.id, id))
+      .returning({ id: enrollmentTokens.id, name: enrollmentTokens.name, uses: enrollmentTokens.uses });
+    if (!row) throw notFound('Enrollment token');
+    await writeAudit(app.db, actorOf(req), {
+      action: 'enrollment_token.delete',
+      targetType: 'enrollment_token',
+      targetId: id,
+      details: { name: row.name, uses: row.uses },
+      ip: req.ip,
+    });
     return reply.code(204).send();
   });
 
@@ -141,7 +145,7 @@ export function enrollmentRoutes(app: FastifyInstance, config: Config, pki: Pki,
             and(
               eq(enrollmentTokens.tokenHash, hashToken(body.token)),
               isNull(enrollmentTokens.revokedAt),
-              gt(enrollmentTokens.expiresAt, now),
+              or(isNull(enrollmentTokens.expiresAt), gt(enrollmentTokens.expiresAt, now)),
               or(isNull(enrollmentTokens.maxUses), lt(enrollmentTokens.uses, enrollmentTokens.maxUses)),
             ),
           )

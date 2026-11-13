@@ -312,7 +312,7 @@ type enrollmentToken struct {
 	Name            string  `json:"name"`
 	MaxUses         *int    `json:"maxUses"`
 	Uses            int     `json:"uses"`
-	ExpiresAt       string  `json:"expiresAt"`
+	ExpiresAt       *string `json:"expiresAt"` // nil = never expires
 	RevokedAt       *string `json:"revokedAt"`
 	CreatedAt       string  `json:"createdAt"`
 	Token           string  `json:"token,omitempty"`
@@ -330,10 +330,20 @@ func tokenState(t enrollmentToken) string {
 	case t.MaxUses != nil && t.Uses >= *t.MaxUses:
 		return "used up"
 	}
-	if exp, err := time.Parse(time.RFC3339, t.ExpiresAt); err == nil && exp.Before(time.Now()) {
+	if t.ExpiresAt == nil {
+		return "active"
+	}
+	if exp, err := time.Parse(time.RFC3339, *t.ExpiresAt); err == nil && exp.Before(time.Now()) {
 		return "expired"
 	}
 	return "active"
+}
+
+func tokenExpiry(t enrollmentToken) string {
+	if t.ExpiresAt == nil {
+		return "never"
+	}
+	return *t.ExpiresAt
 }
 
 func newEnrollmentCmd() *cobra.Command {
@@ -348,7 +358,7 @@ func newEnrollmentCmd() *cobra.Command {
 			}
 			return fmt.Sprintf("%d/%d", t.Uses, *t.MaxUses)
 		}},
-		{Header: "EXPIRES", Value: func(t enrollmentToken) string { return t.ExpiresAt }},
+		{Header: "EXPIRES", Value: tokenExpiry},
 	}
 
 	c.AddCommand(&cobra.Command{
@@ -393,6 +403,9 @@ func newEnrollmentCmd() *cobra.Command {
 				return err
 			}
 			body := map[string]any{"name": name, "expiresInHours": hours}
+			if hours == 0 {
+				body["expiresInHours"] = nil // never expires
+			}
 			if maxUses > 0 {
 				body["maxUses"] = maxUses
 			}
@@ -404,7 +417,7 @@ func newEnrollmentCmd() *cobra.Command {
 				return output.Render(cmd.OutOrStdout(), f, t, []enrollmentToken{t}, cols)
 			}
 			w := cmd.OutOrStdout()
-			fmt.Fprintf(w, "Token (shown only once): %s\nExpires: %s\n\n", t.Token, t.ExpiresAt)
+			fmt.Fprintf(w, "Token (shown only once): %s\nExpires: %s\n\n", t.Token, tokenExpiry(t))
 			if t.InstallCommands != nil {
 				cmds := map[string]string{"windows": t.InstallCommands.Windows, "linux": t.InstallCommands.Linux, "macos": t.InstallCommands.MacOS}
 				for _, o := range []string{"windows", "linux", "macos"} {
@@ -418,13 +431,14 @@ func newEnrollmentCmd() *cobra.Command {
 		},
 	}
 	create.Flags().StringVar(&name, "name", "", "label for the token")
-	create.Flags().IntVar(&hours, "expires-in", 168, "validity in hours (max 8760)")
+	create.Flags().IntVar(&hours, "expires-in", 168, "validity in hours (max 8760, 0 = never expires)")
 	create.Flags().IntVar(&maxUses, "max-uses", 0, "maximum number of devices (0 = unlimited)")
 	create.Flags().StringVar(&osName, "os", "", "only print the install command for windows|linux|macos")
 
 	c.AddCommand(create, &cobra.Command{
-		Use:   "revoke <id>",
-		Short: "Revoke a token",
+		Use:     "delete <id>",
+		Aliases: []string{"revoke", "rm"},
+		Short:   "Delete a token (stops working immediately; enrolled devices stay)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, _, err := session()
@@ -434,7 +448,7 @@ func newEnrollmentCmd() *cobra.Command {
 			if err := client.Do(http.MethodDelete, "/enrollment-tokens/"+url.PathEscape(args[0]), nil, nil, nil); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Token %s revoked\n", args[0])
+			fmt.Fprintf(cmd.ErrOrStderr(), "Token %s deleted\n", args[0])
 			return nil
 		},
 	})

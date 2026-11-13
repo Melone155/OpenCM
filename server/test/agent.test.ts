@@ -54,6 +54,18 @@ describe('M1: enrollment, mTLS agent endpoint, inventory', () => {
     assert.equal(listed.tokenHash, undefined);
   });
 
+  it('tokens without expiry (expiresInHours: null) never expire', async () => {
+    const t = await createEnrollmentToken(ctx, { name: 'forever', expiresInHours: null });
+    assert.equal(t.expiresAt, null);
+    const listed = (await api('GET', '/enrollment-tokens')).json().items.find((i: { id: string }) => i.id === t.id);
+    assert.equal(listed.expiresAt, null);
+    assert.equal((await enroll(ctx, t.token)).res.statusCode, 200);
+    // the default stays 7 days
+    const d = await createEnrollmentToken(ctx, { name: 'default' });
+    const days = (new Date(d.expiresAt!).getTime() - Date.now()) / 86_400_000;
+    assert.ok(days > 6.9 && days <= 7, String(days));
+  });
+
   it('requires devices:create for enrollment tokens', async () => {
     const { token } = await userWithGrants(ctx, 'viewer', ['devices:read']);
     assert.equal((await api('POST', '/enrollment-tokens', { name: 'x' }, token)).statusCode, 403);
@@ -62,9 +74,15 @@ describe('M1: enrollment, mTLS agent endpoint, inventory', () => {
   it('rejects invalid, revoked, expired and used-up tokens', async () => {
     assert.equal((await enroll(ctx, 'oce_doesnotexist')).res.statusCode, 401);
 
+    // deleting a token: it stops working and disappears from the list; the audit log keeps it
     const revoked = await createEnrollmentToken(ctx, { name: 'revoked' });
     assert.equal((await api('DELETE', `/enrollment-tokens/${revoked.id}`)).statusCode, 204);
     assert.equal((await enroll(ctx, revoked.token)).res.statusCode, 401);
+    const listed = (await api('GET', '/enrollment-tokens')).json();
+    assert.ok(!listed.items.some((i: { id: string }) => i.id === revoked.id), 'deleted token must not be listed');
+    assert.equal((await api('DELETE', `/enrollment-tokens/${revoked.id}`)).statusCode, 404);
+    const audit = (await api('GET', '/audit-log?action=enrollment_token.delete')).json();
+    assert.ok(audit.items.some((e: { targetId: string }) => e.targetId === revoked.id));
 
     const once = await createEnrollmentToken(ctx, { name: 'once', maxUses: 1 });
     assert.equal((await enroll(ctx, once.token)).res.statusCode, 200);

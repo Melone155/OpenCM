@@ -624,7 +624,8 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revokeEnrollmentToken"];
+        /** Delete a token (stops working immediately; enrolled devices are not affected) */
+        delete: operations["deleteEnrollmentToken"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2627,8 +2628,11 @@ export interface components {
             deviceGroupId?: string | null;
             maxUses?: number | null;
             uses: number;
-            /** Format: date-time */
-            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description null = never expires
+             */
+            expiresAt: string | null;
             /** Format: date-time */
             revokedAt?: string | null;
             /** Format: date-time */
@@ -5253,8 +5257,11 @@ export interface operations {
             content: {
                 "application/json": {
                     name: string;
-                    /** @default 168 */
-                    expiresInHours?: number;
+                    /**
+                     * @description Validity in hours; null = never expires
+                     * @default 168
+                     */
+                    expiresInHours?: number | null;
                     /** @description null = unlimited */
                     maxUses?: number | null;
                     /**
@@ -5290,7 +5297,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
-    revokeEnrollmentToken: {
+    deleteEnrollmentToken: {
         parameters: {
             query?: never;
             header?: never;
@@ -5301,7 +5308,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Revoked */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -32,7 +32,7 @@ export interface EnrolledAgent {
 export async function createEnrollmentToken(ctx: TestCtx, body: Record<string, unknown> = { name: 'test' }) {
   const res = await ctx.app.inject({ method: 'POST', url: '/api/v1/enrollment-tokens', headers: bearer(ctx.adminToken), payload: body });
   if (res.statusCode !== 201) throw new Error(res.body);
-  return res.json() as { id: string; token: string; installCommands: { windows: string; linux: string; macos: string } };
+  return res.json() as { id: string; token: string; expiresAt: string | null; installCommands: { windows: string; linux: string; macos: string } };
 }
 
 export async function enroll(ctx: TestCtx, token: string, opts: { machineId?: string; hostname?: string; os?: string } = {}) {

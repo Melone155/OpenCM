@@ -15,6 +15,11 @@ Regressionstests: `server/test/review-fixes.test.ts`.
 - Das Server-Image enthält die Agent-Binaries aller Plattformen (`AGENT_BUNDLED_DIR`); manuelles Kopieren nach `/data/files/agent` entfällt. Eigene Binaries dort haben weiter Vorrang.
 - Docker-Images werden in der GitHub Container Registry veröffentlicht (`ghcr.io/melone155/opencm-server`, `-web`); die Compose-Datei nutzt sie. Die Caddy-Konfiguration ist in `docker-compose.yml` eingebettet – auf dem Server genügen `docker-compose.yml` und `.env`, auch mit einer IP-Adresse statt Domain.
 
+- Enrollment-Tokens können unbegrenzt gültig sein (`expiresInHours: null`, Web „unbegrenzt“, CLI `--expires-in 0`; Migration `0009`).
+
+### Geändert
+- Ein gelöschter Enrollment-Token wird jetzt wirklich gelöscht statt nur widerrufen: Er funktioniert sofort nicht mehr und verschwindet aus der Liste (Audit-Aktion `enrollment_token.delete`). Web: „Löschen“ mit Rückfrage für jeden Token; CLI: `opencm enrollment-tokens delete` (alter Name `revoke` bleibt als Alias).
+
 ### Behoben
 - Mit dem `postgres`-Treiber (Produktion) wurden `jsonb`-Strings doppelt geparst: `"131.0"` kam als Zahl `131` zurück (z. B. Versionen in der Geräte-Historie). Betraf nicht PGlite.
 - CLI: `--target all` wurde als Hostname „all“ behandelt.
