@@ -450,7 +450,6 @@ export async function rerunDeviceIds(db: Db, runId: string, onlyFailed: boolean)
   return deviceIds;
 }
 
-/** Callers that act for a user must check `needsApproval` first (see POST /runs/{id}/rerun). */
 export async function rerun(db: Db, runId: string, onlyFailed: boolean, triggeredBy: string | null) {
   const [run] = await db.select().from(jobRuns).where(eq(jobRuns.id, runId));
   if (!run) throw new HttpError(404, 'not_found', 'Run not found');

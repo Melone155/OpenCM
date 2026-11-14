@@ -243,9 +243,7 @@ describe('M3: vulnerability detection', () => {
     const tpl = (await api('GET', '/script-templates')).body.items.find((t: { id: string }) => t.id === 'win-winget-upgrade');
     assert.ok(tpl);
     const s = await api('POST', '/scripts', { name: 'winget upgrade', interpreter: tpl.interpreter, content: tpl.content, parameters: tpl.parameters });
-    const noApproval = await api('POST', '/vulnerabilities/CVE-2099-0002/remediation', { scriptId: s.body.id, params: { PackageId: '7zip.7zip' } });
-    assert.equal(noApproval.body.error.code, 'script_not_approved', 'templates must be approved first');
-    await api('POST', `/scripts/${s.body.id}/versions/1/approve`);
+    assert.equal(s.body.versions[0].status, 'approved', 'released on creation');
 
     const rem = await api('POST', '/vulnerabilities/CVE-2099-0002/remediation', { scriptId: s.body.id, params: { PackageId: '7zip.7zip' }, runNow: true });
     assert.equal(rem.status, 201, JSON.stringify(rem.body));

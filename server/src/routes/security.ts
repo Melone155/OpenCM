@@ -1,15 +1,14 @@
 import { and, asc, desc, eq, gte, isNull, lte, type SQL } from 'drizzle-orm';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { APPROVER_PERMISSIONS, approverPermission, decide, expireApprovals } from '../approvals.ts';
 import { writeAudit } from '../audit.ts';
 import { assertCanGrant, assertCanManageUser } from '../auth/escalation.ts';
 import type { Directory } from '../auth/ldap.ts';
 import { hasPermission, isValidGrant } from '../auth/permissions.ts';
 import { generateToken, hashToken } from '../auth/tokens.ts';
 import type { Config } from '../config.ts';
-import { apiTokens, approvalRequests, auditLog, sessions, users } from '../db/schema.ts';
-import { forbidden, HttpError, IdParams, notFound, Pagination, parse, Uuid } from '../http.ts';
+import { apiTokens, auditLog, sessions, users } from '../db/schema.ts';
+import { forbidden, HttpError, IdParams, notFound, parse, Uuid } from '../http.ts';
 import { actorOf, principalOf } from '../plugins/auth.ts';
 import { getSecurity, patchSecurity, SecurityPatchSchema } from '../settings.ts';
 
@@ -19,8 +18,6 @@ const TokenBody = z.object({
   expiresInDays: z.number().int().min(1).max(3650).default(90),
 });
 const TokenList = z.object({ all: z.enum(['true', 'false']).default('false') });
-const ApprovalList = Pagination.extend({ status: z.enum(['pending', 'approved', 'rejected', 'expired', 'failed', 'all']).default('pending') });
-const Decision = z.object({ reason: z.string().max(1000).optional() });
 const LdapTest = z.object({ username: z.string().max(200).optional() });
 const AuditExport = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
@@ -97,52 +94,6 @@ export function securityRoutes(app: FastifyInstance, config: Config, directory: 
     await writeAudit(app.db, actorOf(req), { action: 'api_token.revoke', targetType: 'api_token', targetId: id, details: { name: t.name, owner: t.userId }, ip: req.ip });
     return reply.code(204).send();
   });
-
-  // ------------------------------------------------------------ four-eyes approvals
-
-  app.get('/approvals', { preHandler: app.requireAuth }, async (req) => {
-    const p = principalOf(req);
-    const q = parse(ApprovalList, req.query);
-    await expireApprovals(app.db);
-    const approverAny = APPROVER_PERMISSIONS.some((perm) => hasPermission(p.grants, perm));
-    const conds: SQL[] = [];
-    if (q.status !== 'all') conds.push(eq(approvalRequests.status, q.status));
-    if (!approverAny) conds.push(eq(approvalRequests.requestedBy, p.userId)); // own requests only
-    const items = await app.db
-      .select({ r: approvalRequests, requester: users.username })
-      .from(approvalRequests)
-      .leftJoin(users, eq(users.id, approvalRequests.requestedBy))
-      .where(conds.length ? and(...conds) : undefined)
-      .orderBy(desc(approvalRequests.requestedAt))
-      .limit(q.limit)
-      .offset(q.offset);
-    return {
-      items: items
-        .map(({ r, requester }) => ({ r, requester, mayDecide: hasPermission(p.grants, approverPermission(r)) }))
-        // approvers see the requests they are responsible for, everyone sees their own
-        .filter(({ r, mayDecide }) => mayDecide || r.requestedBy === p.userId)
-        .map(({ r, requester, mayDecide }) => ({ ...r, requesterName: requester, canDecide: mayDecide && r.requestedBy !== p.userId && r.status === 'pending' })),
-    };
-  });
-
-  const decisionRoute = (approve: boolean) => async (req: FastifyRequest) => {
-    const { id } = parse(IdParams, req.params);
-    const body = parse(Decision, req.body ?? {});
-    if (!approve && !body.reason) throw new HttpError(400, 'validation_error', 'A reason is required to reject');
-    const p = principalOf(req);
-    const r = await decide(app.db, config, id, { userId: p.userId, grants: p.grants }, approve, body.reason ?? null);
-    await writeAudit(app.db, actorOf(req), {
-      action: approve ? 'approval.approve' : 'approval.reject',
-      targetType: 'approval',
-      targetId: id,
-      details: { action: r.action, status: r.status, result: r.result ?? null, reason: body.reason ?? null },
-      ip: req.ip,
-    });
-    return r;
-  };
-  // the required approver permission depends on the request (checked in decide())
-  app.post('/approvals/:id/approve', { preHandler: app.requireAuth }, decisionRoute(true));
-  app.post('/approvals/:id/reject', { preHandler: app.requireAuth }, decisionRoute(false));
 
   // ------------------------------------------------------------ settings
 

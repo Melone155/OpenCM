@@ -439,7 +439,7 @@ func newEnrollmentCmd() *cobra.Command {
 		Use:     "delete <id>",
 		Aliases: []string{"revoke", "rm"},
 		Short:   "Delete a token (stops working immediately; enrolled devices stay)",
-		Args:  cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, _, err := session()
 			if err != nil {

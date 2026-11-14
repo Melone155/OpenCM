@@ -7,7 +7,7 @@ import { scopeCondition } from '../auth/scope.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/client.ts';
 import { deployments, devices, deviceSoftware, jobRuns, packageFiles, packages, packageVersions, tasks, type DetectionRule } from '../db/schema.ts';
-import { conflict, forbidden, HttpError, IdParams, isUniqueViolation, notFound, parse, Uuid } from '../http.ts';
+import { conflict, HttpError, IdParams, isUniqueViolation, notFound, parse, Uuid } from '../http.ts';
 import { versionInput } from '../packages/deploy.ts';
 import { detectFromInventory } from '../packages/detect.ts';
 import { PACKAGE_TYPES, packageScript, needsFile, validateAction, validatePackageVersion, type PackageType, type PackageVersionInput, type Platform } from '../packages/generate.ts';
@@ -281,7 +281,6 @@ export function packageRoutes(app: FastifyInstance, config: Config) {
     const { v, f } = await loadVersion(app.db, id, versionId);
     const me = principalOf(req).userId;
     if (v.status !== 'draft') throw conflict(`Version is ${v.status}`);
-    if (!config.SCRIPT_SELF_APPROVAL && v.createdBy === me) throw forbidden('You cannot approve a version you created yourself');
     const problems = validatePackageVersion(p.platform as Platform, versionInput(v, f?.sizeBytes), { requireFile: true });
     if (problems.length) throw new HttpError(409, 'package_invalid', problems.join('; '), problems);
     if (v.fileSha256 && !(await store.exists(v.fileSha256))) throw conflict('The installer file is missing in the repository – upload it again');

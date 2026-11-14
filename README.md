@@ -33,7 +33,7 @@ OpenCM is an **open-source client management platform** that you run on your own
 
 - **What is there?** Hardware, operating systems, installed software, users and the security status of each device, plus devices without an agent such as monitors, printers and phones.
 - **What is at risk?** Installed software is compared with the NVD, CISA KEV and OSV vulnerability databases. Missing operating-system updates and weak security settings (e.g. BitLocker off) are reported.
-- **What needs to change?** Scripts, software packages and updates are rolled out in stages to selected devices, with approvals, four-eyes control and tamper protection.
+- **What needs to change?** Scripts, software packages and updates are rolled out in stages to selected devices, with versioned releases and tamper protection.
 
 A small agent runs on each device. It only ever opens **outgoing** connections to the server, encrypted and mutually authenticated (mTLS). Everything is operated from the **web interface**, the **`opencm` command-line tool** or the **REST API**.
 
@@ -87,7 +87,7 @@ OpenCM is **free software under the MIT license**. There are no license keys and
 | 📦 **Software & patches** | Package repository, staged rollout in rings, bandwidth limits, Windows Update / apt / dnf / softwareupdate |
 | 📊 **Reports** | Dashboard with trends, report builder over 8 data sources, CSV export |
 | 🔔 **Integration** | Signed webhooks, complete REST API (OpenAPI 3.1), CLI for every module |
-| 👥 **Access control** | Granular roles, scopes on device groups, four-eyes approvals, MFA, API tokens, LDAP / Active Directory |
+| 👥 **Access control** | Granular roles, scopes on device groups, MFA, API tokens, LDAP / Active Directory |
 | 🔐 **Tamper protection** | SHA-256 + HMAC seal on every script and file, checked again on the device before execution |
 
 ---
@@ -153,7 +153,7 @@ Monitors, printers, phones, network gear, docking stations and devices in stock 
 
 - **Script library:**
   - Languages: PowerShell, CMD, Bash, zsh and Python.
-  - Every change creates a new **immutable version**. A version goes from draft to approved to retired; only approved versions can run.
+  - Every change creates a new **immutable version**. A new version is released right away if you may release scripts (`scripts:approve`), otherwise it starts as a draft; only released versions can run.
   - Parameters reach the script as environment variables `OPENCM_PARAM_<NAME>`.
   - Editor with syntax highlighting (CodeMirror), templates (winget, Chocolatey, apt, dnf, macOS updates …) and a **test run on a single device** (drafts can only be test-run by users who may also approve scripts).
 - **Jobs:**
@@ -214,7 +214,7 @@ Every inventory includes the device's security posture. The queries are read-onl
   - Agents download over mTLS; interrupted downloads resume (Range).
 - **Detection rules** decide whether a package is already installed or the installation succeeded: software with a version, file, registry value or a command. They are checked before and after installing.
 - **Exit codes:** you define which codes count as success and which as "restart needed".
-- **Versions with approval** (optionally four-eyes); an approved version can no longer be changed (enforced by the database).
+- **Versions with release:** you release your own version with one click; a released version can no longer be changed (enforced by the database).
 - **Rollout in rings** (e.g. Test → Pilot → All):
   - The next ring starts automatically after a waiting time and a minimum success rate.
   - A ring pauses automatically when too many devices fail; it can be resumed or cancelled.
@@ -238,7 +238,7 @@ Every inventory includes the device's security posture. The queries are read-onl
 ### Dashboard & reports
 
 - **Dashboard:**
-  - Key figures per area: devices, vulnerabilities, security status, updates, failed tasks, rollouts, approvals, licenses and assets.
+  - Key figures per area: devices, vulnerabilities, security status, updates, failed tasks, rollouts, licenses and assets.
   - What you see depends on your permissions and device scope.
 - **Trends** over 30, 90 or 365 days. The worker stores the values hourly.
 - **Report builder** with 8 data sources: devices, software, vulnerability findings, pending updates, task results, software licenses, security status and assets.
@@ -255,7 +255,6 @@ Webhooks send signed notifications to other systems such as a ticket system, cha
 | `device.enrolled` | a new device was enrolled |
 | `run.completed` / `task.failed` | a run finished / a task failed for good |
 | `deployment.completed` / `deployment.paused` | a rollout finished / was paused |
-| `approval.requested` | a four-eyes approval is needed |
 | `vulnerability.findings.new` | new critical or actively exploited findings |
 | `patch.scan_failed` | a patch scan failed |
 | `security.integrity_violation` | a hash check failed (tampering suspected) |
@@ -280,9 +279,6 @@ This module manages the licenses your organisation owns for **third-party softwa
 
 - **Roles** with granular permissions per module and action (`devices:read`, `jobs:execute`, `software:approve` …), plus built-in roles: Administrator, Auditor and Helpdesk.
 - **Scopes:** a role can be limited to device groups, e.g. "helpdesk Munich may only see Munich devices". Devices outside the scope stay invisible (the API returns 404).
-- **Four-eyes approval:**
-  - Required for mass actions (all devices or more than a threshold), for activating broad schedules and for rollouts.
-  - You cannot approve your own request.
 - **MFA (TOTP):** set up with a QR code; 10 recovery codes; can be made mandatory; admins can reset it.
 - **API tokens:** a token never has more rights than its owner, has a maximum lifetime and can be revoked.
 - **LDAP / Active Directory:** sign-in with nested AD groups mapped to OpenCM groups; the user account is created automatically at first sign-in.
@@ -452,14 +448,13 @@ opencm dashboard
 opencm reports query software --filter "name contains firefox" --filter "version lt 130"
 opencm webhooks create Tickets https://tickets.example.org/hooks/opencm --event security.integrity_violation
 opencm tokens create ci --permission devices:read --days 30
-opencm approvals list && opencm approvals approve <id>
 opencm audit export --format csv -f audit.csv
 opencm completion powershell | Out-String | Invoke-Expression
 ```
 
 - Output as a table (default) or with `-o json|yaml` for scripts.
 - Several servers are managed as profiles (`--profile`).
-- **Exit codes:** 0 OK · 1 error · 2 usage · 3 not signed in · 4 forbidden · 5 not found · 6 conflict · 7 run failed (`--watch`) · 8 waiting for approval.
+- **Exit codes:** 0 OK · 1 error · 2 usage · 3 not signed in · 4 forbidden · 5 not found · 6 conflict · 7 run failed (`--watch`).
 
 ---
 
@@ -487,7 +482,6 @@ All settings are environment variables in `deploy/.env`; `deploy/.env.example` d
 | `POSTGRES_PASSWORD` | – | Database password |
 | `BOOTSTRAP_ADMIN_USER` / `_PASSWORD` | – | First admin (first start only) |
 | `AGENT_HEARTBEAT_SECONDS` | `60` | Agent check-in interval |
-| `FOUR_EYES_ENABLED`, `FOUR_EYES_DEVICE_THRESHOLD` | `true`, `50` | Four-eyes approval for mass actions |
 | `MFA_REQUIRED` | `false` | Make MFA mandatory for everyone |
 | `LDAP_URL`, `LDAP_BIND_DN`, `LDAP_BASE_DN` … | – | LDAP / Active Directory sign-in |
 | `VULN_FEEDS_ENABLED`, `NVD_API_KEY` | `true`, – | Vulnerability feeds; an NVD key (free) speeds up the first mirror |
@@ -508,7 +502,7 @@ All settings are environment variables in `deploy/.env`; `deploy/.env.example` d
   - Tasks are signed with Ed25519, and so are agent updates.
 - **Tamper protection:** SHA-256 plus an HMAC seal on everything that is executed (see [Tamper protection](#tamper-protection)).
 - **Passwords and tokens:** passwords are hashed with Argon2id. Session and API tokens are stored only as SHA-256 hashes. MFA secrets are encrypted with AES-256-GCM.
-- **Least privilege:** permissions per module and action, scopes on device groups and four-eyes approvals.
+- **Least privilege:** permissions per module and action, and scopes on device groups.
 - **Audit:** an append-only audit log with export.
 - **No SQL from clients:** report filters are compiled from whitelists and values are bound as parameters.
 - **Privacy:** OSV receives only package names and versions. No telemetry is sent to anyone.
@@ -573,7 +567,7 @@ Rules for contributions:
 | M1 | Agent & inventory |
 | M2 | Scripts & jobs |
 | M3 | Vulnerability detection (NVD, KEV, EPSS) |
-| M4 | Permissions: scopes, four-eyes, MFA, API tokens, LDAP/AD |
+| M4 | Permissions: scopes, MFA, API tokens, LDAP/AD |
 | M5 | Software distribution in rings, patch management, tamper protection |
 | M6 | Dashboard, reports, webhooks, software license management |
 | M7 | OSV for Linux distributions, security status, assets without an agent |

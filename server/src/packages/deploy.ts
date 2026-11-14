@@ -8,7 +8,6 @@ import { and, count, eq, inArray, isNotNull, isNull, notInArray, sql } from 'dri
 import { onlineThresholdSeconds, type Config } from '../config.ts';
 import type { Db } from '../db/client.ts';
 import {
-  approvalRequests,
   deployments,
   devices,
   jobRuns,
@@ -112,19 +111,6 @@ export async function ringDeviceIds(db: Db, config: Config, dep: Pick<Deployment
     for (const d of rows) if (dep.steps[d.os]) (byOs[d.os] ??= []).push(d.id);
   }
   return byOs;
-}
-
-/** All devices the deployment would reach (for four-eyes), union over rings. */
-export async function plannedDevices(db: Db, config: Config, dep: Pick<DeploymentRow, 'rings' | 'steps'>): Promise<{ count: number; allDevices: boolean }> {
-  const all = new Set<string>();
-  for (const r of dep.rings) for (const id of await resolveTargets(db, r.targets, onlineThresholdSeconds(config))) all.add(id);
-  let n = 0;
-  const ids = [...all];
-  for (let i = 0; i < ids.length; i += 5000) {
-    const rows = await db.select({ os: devices.os }).from(devices).where(inArray(devices.id, ids.slice(i, i + 5000)));
-    n += rows.filter((d) => dep.steps[d.os]).length;
-  }
-  return { count: n, allDevices: dep.rings.some((r) => r.targets.allDevices) };
 }
 
 export async function createDeployment(db: Db, input: DeploymentInput, createdBy: string | null) {
@@ -254,25 +240,8 @@ export async function ringStats(db: Db, dep: Pick<DeploymentRow, 'id' | 'rings' 
 }
 
 /** One pass over running deployments; safe to run concurrently (claims). */
-export async function deploymentTick(db: Db, config: Config, now = new Date()): Promise<{ promoted: number; paused: number; completed: number; cancelled: number }> {
-  const res = { promoted: 0, paused: 0, completed: 0, cancelled: 0 };
-
-  // approvals that were rejected or expired → the deployment is cancelled
-  const waiting = await db
-    .select({ id: deployments.id, approvalStatus: approvalRequests.status, expiresAt: approvalRequests.expiresAt })
-    .from(deployments)
-    .leftJoin(approvalRequests, eq(approvalRequests.id, deployments.approvalId))
-    .where(eq(deployments.status, 'pending_approval'));
-  for (const w of waiting) {
-    const dead = !w.approvalStatus || ['rejected', 'expired', 'failed'].includes(w.approvalStatus) || (w.approvalStatus === 'pending' && w.expiresAt! < now);
-    if (!dead) continue;
-    const [c] = await db
-      .update(deployments)
-      .set({ status: 'cancelled', finishedAt: now, pausedReason: 'Freigabe abgelehnt oder abgelaufen' })
-      .where(and(eq(deployments.id, w.id), eq(deployments.status, 'pending_approval')))
-      .returning({ id: deployments.id });
-    if (c) res.cancelled++;
-  }
+export async function deploymentTick(db: Db, config: Config, now = new Date()): Promise<{ promoted: number; paused: number; completed: number }> {
+  const res = { promoted: 0, paused: 0, completed: 0 };
 
   const running = await db.select().from(deployments).where(and(eq(deployments.status, 'running'), isNotNull(deployments.ringStartedAt)));
   for (const dep of running) {

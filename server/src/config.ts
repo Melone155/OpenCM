@@ -42,8 +42,6 @@ const ConfigSchema = z.object({
   TASK_OUTPUT_MAX_BYTES: z.coerce.number().int().min(1024).max(64 * 1024 * 1024).default(1024 * 1024),
   /** extra time before a dispatched/running task is declared timed out */
   TASK_TIMEOUT_GRACE_SECONDS: z.coerce.number().int().min(0).max(3600).default(120),
-  /** allow approving script versions you authored yourself (four-eyes rules follow in M4) */
-  SCRIPT_SELF_APPROVAL: bool.default(false),
 
   // ---- vulnerabilities (M3)
   VULN_FEEDS_ENABLED: bool.default(true),
@@ -62,10 +60,6 @@ const ConfigSchema = z.object({
   VULN_WEBHOOK_SECRET: z.string().min(16).optional(),
 
   // ---- permissions (M4) – defaults for the runtime security settings
-  FOUR_EYES_ENABLED: bool.default(true),
-  FOUR_EYES_DEVICE_THRESHOLD: z.coerce.number().int().min(0).max(1_000_000).default(50),
-  /** devices of a user's own runs within this window count towards the four-eyes threshold (0 = each request on its own) */
-  FOUR_EYES_WINDOW_MINUTES: z.coerce.number().int().min(0).max(7 * 24 * 60).default(60),
   MFA_REQUIRED: bool.default(false),
   API_TOKEN_MAX_DAYS: z.coerce.number().int().min(1).max(3650).default(365),
 

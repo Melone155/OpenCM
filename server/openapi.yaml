@@ -41,7 +41,7 @@ tags:
       adds the exploitation probability. Findings are re-evaluated after every feed sync and
       for every new inventory.
   - name: software
-    description: Package repository (installer files, package managers, detection rules) with approval.
+    description: Package repository (installer files, package managers, detection rules) with release of versions.
   - name: deployments
     description: Ring-based distribution (e.g. Test, Pilot, All) of packages and OS updates with automatic promotion.
   - name: patches
@@ -255,49 +255,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /approvals:
-    get:
-      tags: [jobs]
-      operationId: listApprovals
-      x-permission: authenticated (jobs:approve sees all, others their own requests)
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-        - { name: status, in: query, schema: { type: string, enum: [pending, approved, rejected, expired, failed, all], default: pending } }
-      responses:
-        '200': { description: Requests, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Approval' } } } } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /approvals/{id}/approve:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    post:
-      tags: [jobs]
-      operationId: approveRequest
-      x-permission: 'jobs:approve | software:approve | patches:approve (je nach Anfrage)'
-      description: Four-eyes – not by the requester. The action is executed on behalf of the requester (who must still be entitled); a changed job makes the request `failed`.
-      requestBody: { content: { application/json: { schema: { type: object, properties: { reason: { type: string } } } } } }
-      responses:
-        '200': { description: Decided (status approved or failed, see result), content: { application/json: { schema: { $ref: '#/components/schemas/Approval' } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-
-  /approvals/{id}/reject:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    post:
-      tags: [jobs]
-      operationId: rejectRequest
-      x-permission: 'jobs:approve | software:approve | patches:approve (je nach Anfrage)'
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string } } } } } }
-      responses:
-        '200': { description: Rejected, content: { application/json: { schema: { $ref: '#/components/schemas/Approval' } } } }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-
   /settings/security:
     get:
       tags: [system]
@@ -319,7 +276,6 @@ paths:
               type: object
               properties:
                 mfaRequired: { type: boolean }
-                fourEyes: { type: object, properties: { enabled: { type: boolean }, deviceThreshold: { type: integer, minimum: 0 } } }
       responses:
         '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/SecuritySettings' } } } }
         '400': { $ref: '#/components/responses/ValidationError' }
@@ -1439,7 +1395,7 @@ paths:
       tags: [scripts]
       operationId: approveScriptVersion
       x-permission: scripts:approve
-      description: draft → approved. With `SCRIPT_SELF_APPROVAL=false` the author cannot approve their own version.
+      description: draft → approved. New versions are already released on creation when the author holds scripts:approve; approving an approved version returns it unchanged.
       responses:
         '200': { description: Approved, content: { application/json: { schema: { $ref: '#/components/schemas/ScriptVersionFull' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -1470,8 +1426,7 @@ paths:
       summary: Test-run a version on a single device
       description: |
         Approved versions need scripts:execute. A draft is unreviewed code and additionally needs the
-        global permission scripts:approve (403 otherwise). Test runs count towards the four-eyes
-        threshold; when it is reached the request is refused with 409 `four_eyes_limit`.
+        global permission scripts:approve (403 otherwise).
       requestBody:
         required: true
         content:
@@ -1512,7 +1467,6 @@ paths:
                 timeoutSeconds: { type: integer, minimum: 10, maximum: 86400, default: 3600 }
       responses:
         '201': { description: Run created, content: { application/json: { schema: { $ref: '#/components/schemas/JobRun' } } } }
-        '202': { description: Four-eyes approval required (not executed yet), content: { application/json: { schema: { $ref: '#/components/schemas/ApprovalPending' } } } }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1612,7 +1566,6 @@ paths:
         content: { application/json: { schema: { type: object, properties: { deviceIds: { type: array, items: { type: string, format: uuid }, description: restrict to these targets } } } } }
       responses:
         '201': { description: Run created, content: { application/json: { schema: { $ref: '#/components/schemas/JobRun' } } } }
-        '202': { description: Four-eyes approval required (not executed yet), content: { application/json: { schema: { $ref: '#/components/schemas/ApprovalPending' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1693,7 +1646,6 @@ paths:
         content: { application/json: { schema: { type: object, properties: { onlyFailed: { type: boolean, default: true } } } } }
       responses:
         '201': { description: New run, content: { application/json: { schema: { $ref: '#/components/schemas/JobRun' } } } }
-        '202': { description: Four-eyes approval required (not executed yet), content: { application/json: { schema: { $ref: '#/components/schemas/ApprovalPending' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1904,7 +1856,7 @@ paths:
       responses:
         '201':
           description: Job created
-          content: { application/json: { schema: { type: object, required: [jobId, devices], properties: { jobId: { type: string, format: uuid }, runId: { type: [string, 'null'], format: uuid }, approvalId: { type: [string, 'null'], format: uuid, description: set when runNow needs four-eyes approval }, devices: { type: integer } } } } }
+          content: { application/json: { schema: { type: object, required: [jobId, devices], properties: { jobId: { type: string, format: uuid }, runId: { type: [string, 'null'], format: uuid }, devices: { type: integer } } } } }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2321,7 +2273,7 @@ paths:
       tags: [software]
       operationId: approvePackageVersion
       x-permission: software:approve
-      description: draft → approved after a full validation (file present). With `SCRIPT_SELF_APPROVAL=false` the author cannot approve.
+      description: draft → approved after a full validation (file present). The author may release their own version.
       responses:
         '200': { description: Approved, content: { application/json: { schema: { $ref: '#/components/schemas/PackageVersion' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -2464,18 +2416,6 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/DeploymentInput' } } }
       responses:
         '201': { description: Started (ring 1 running), content: { application/json: { schema: { $ref: '#/components/schemas/Deployment' } } } }
-        '202':
-          description: Four-eyes approval required – the deployment starts once a second person approves
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [approvalRequired, approvalId, devices, deployment]
-                properties:
-                  approvalRequired: { type: boolean, enum: [true] }
-                  approvalId: { type: string, format: uuid }
-                  devices: { type: integer }
-                  deployment: { $ref: '#/components/schemas/Deployment' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3428,41 +3368,11 @@ components:
             lastUsedAt: { type: [string, 'null'], format: date-time }
             revokedAt: { type: [string, 'null'], format: date-time }
 
-    Approval:
-      type: object
-      required: [id, action, summary, status, deviceCount, requestedAt, expiresAt, canDecide]
-      properties:
-        id: { type: string, format: uuid }
-        action: { type: string, enum: [job.run, script.run, remediation.run, run.rerun, job.enable, deployment.start] }
-        summary: { type: string }
-        payload: { type: object }
-        deviceCount: { type: integer }
-        status: { type: string, enum: [pending, approved, rejected, expired, failed] }
-        requestedBy: { type: [string, 'null'], format: uuid }
-        requesterName: { type: [string, 'null'] }
-        requestedAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
-        decidedBy: { type: [string, 'null'], format: uuid }
-        decidedAt: { type: [string, 'null'], format: date-time }
-        reason: { type: [string, 'null'] }
-        result: { type: [object, 'null'], description: '{ runId } / { jobId, enabled } or { error }' }
-        canDecide: { type: boolean }
-
-    ApprovalPending:
-      type: object
-      required: [approvalRequired, approvalId, devices]
-      description: Four-eyes – the action was not executed; it waits for approval by a second person.
-      properties:
-        approvalRequired: { type: boolean, enum: [true] }
-        approvalId: { type: string, format: uuid }
-        devices: { type: integer }
-
     SecuritySettings:
       type: object
-      required: [mfaRequired, fourEyes, ldap]
+      required: [mfaRequired, ldap]
       properties:
         mfaRequired: { type: boolean }
-        fourEyes: { type: object, required: [enabled, deviceThreshold], properties: { enabled: { type: boolean }, deviceThreshold: { type: integer } } }
         ldap: { type: object, required: [enabled, url, requireGroup], properties: { enabled: { type: boolean }, url: { type: [string, 'null'] }, requireGroup: { type: boolean } } }
 
     Role:
@@ -3920,7 +3830,6 @@ components:
                   continueOnError: { type: boolean }
                   customFieldId: { type: [string, 'null'], format: uuid }
             lastRun: { oneOf: [{ $ref: '#/components/schemas/JobRun' }, { type: 'null' }] }
-            approvalId: { type: [string, 'null'], format: uuid, description: 'create/update only: broad scheduled job saved disabled until approved (four-eyes)' }
 
     JobRunBase:
       type: object
@@ -4317,11 +4226,10 @@ components:
         patchFilter: { oneOf: [{ $ref: '#/components/schemas/PatchFilter' }, { type: 'null' }] }
         rings: { type: array, items: { $ref: '#/components/schemas/DeploymentRing' } }
         options: { $ref: '#/components/schemas/JobOptions' }
-        status: { type: string, enum: [created, pending_approval, running, paused, completed, cancelled] }
+        status: { type: string, enum: [created, running, paused, completed, cancelled] }
         currentRing: { type: integer, description: '-1 = not started yet' }
         ringStartedAt: { type: [string, 'null'], format: date-time }
         pausedReason: { type: [string, 'null'] }
-        approvalId: { type: [string, 'null'], format: uuid }
         createdBy: { type: [string, 'null'], format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -4346,7 +4254,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/DeploymentBase'
         - type: object
-          required: [platforms, package, rings, runs, approvalStatus]
+          required: [platforms, package, rings, runs]
           properties:
             platforms: { type: array, items: { $ref: '#/components/schemas/Platform' } }
             package:
@@ -4359,7 +4267,6 @@ components:
                 version: { type: string }
                 type: { $ref: '#/components/schemas/PackageType' }
             createdByName: { type: [string, 'null'] }
-            approvalStatus: { type: [string, 'null'] }
             rings:
               type: array
               items:
@@ -4503,16 +4410,10 @@ components:
             failed24h: { type: integer }
         deployments:
           type: object
-          required: [running, paused, pendingApproval]
+          required: [running, paused]
           properties:
             running: { type: integer }
             paused: { type: integer }
-            pendingApproval: { type: integer }
-        approvals:
-          type: object
-          required: [pending]
-          properties:
-            pending: { type: integer }
         integrity:
           type: object
           required: [violations7d]

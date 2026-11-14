@@ -65,44 +65,38 @@ describe('REV-001/002: user management cannot escalate privileges', () => {
   });
 });
 
-describe('REV-003: rerun respects the four-eyes principle', () => {
+describe('mass actions run without a second person', () => {
   let ctx: TestCtx;
   let api: ReturnType<typeof apiFor>;
 
   before(async () => {
-    ctx = await setup({ FOUR_EYES_ENABLED: 'true', FOUR_EYES_DEVICE_THRESHOLD: '2' });
+    ctx = await setup();
     api = apiFor(ctx);
   });
   after(async () => ctx.close());
 
-  it('a mass rerun needs approval by a second person; small reruns run directly', async () => {
+  it('jobs, reruns, ad-hoc and test runs on all devices start immediately', async () => {
     const devs = [await enrollOk(ctx, { hostname: 'A1', os: 'linux' }), await enrollOk(ctx, { hostname: 'A2', os: 'linux' }), await enrollOk(ctx, { hostname: 'A3', os: 'linux' })];
-    const approver = (await userWithGrants(ctx, 'approver', ['jobs:read', 'jobs:approve'])).token;
     const s = await api('POST', '/scripts', { name: 'mass', interpreter: 'bash', content: 'echo 1' });
-    await api('POST', `/scripts/${s.body.id}/versions/1/approve`);
+    assert.equal(s.body.versions[0].status, 'approved', 'released on creation');
     const steps = [{ scriptId: s.body.id }];
 
-    const mass = (await api('POST', '/jobs', { name: 'mass-job', trigger: 'manual', targets: { deviceIds: devs.map((d) => d.deviceId) }, steps })).body;
-    const req = await api('POST', `/jobs/${mass.id}/run`);
-    const first = await api('POST', `/approvals/${req.body.approvalId}/approve`, {}, approver);
-    const runId = first.body.result.runId;
-
-    const again = await api('POST', `/runs/${runId}/rerun`, { onlyFailed: false });
-    assert.equal(again.status, 202);
-    assert.equal(again.body.approvalRequired, true);
-    assert.equal(again.body.devices, 3);
-    assert.equal((await api('GET', `/jobs/${mass.id}/runs`)).body.total, 1, 'nothing executed yet');
-    assert.equal((await api('POST', `/approvals/${again.body.approvalId}/approve`, {})).status, 403, 'not your own request');
-    const ok = await api('POST', `/approvals/${again.body.approvalId}/approve`, {}, approver);
-    assert.equal(ok.body.status, 'approved');
-    const rerun = await api('GET', `/runs/${ok.body.result.runId}`);
-    assert.equal(rerun.body.trigger, 'rerun');
-    assert.equal(rerun.body.counts.total, 3);
-
-    const small = (await api('POST', '/jobs', { name: 'small-job', trigger: 'manual', targets: { deviceIds: [devs[0]!.deviceId] }, steps })).body;
-    const run = await api('POST', `/jobs/${small.id}/run`);
+    const mass = (await api('POST', '/jobs', { name: 'mass-job', trigger: 'manual', targets: { allDevices: true }, steps })).body;
+    const run = await api('POST', `/jobs/${mass.id}/run`);
     assert.equal(run.status, 201);
-    assert.equal((await api('POST', `/runs/${run.body.id}/rerun`, { onlyFailed: false })).status, 201);
+    assert.equal(run.body.counts.total, 3);
+    const again = await api('POST', `/runs/${run.body.id}/rerun`, { onlyFailed: false });
+    assert.equal(again.status, 201);
+    assert.equal(again.body.trigger, 'rerun');
+
+    const adhoc = await api('POST', `/scripts/${s.body.id}/run`, { targets: { allDevices: true } });
+    assert.equal(adhoc.status, 201);
+    for (const d of devs) assert.equal((await api('POST', `/scripts/${s.body.id}/versions/1/test`, { deviceId: d.deviceId })).status, 201);
+
+    const cron = await api('POST', '/jobs', { name: 'nightly', trigger: 'cron', cron: '0 3 * * *', enabled: true, targets: { allDevices: true }, steps });
+    assert.equal(cron.status, 201);
+    assert.equal(cron.body.enabled, true, 'scheduled jobs stay enabled');
+    assert.equal((await api('GET', '/approvals')).status, 404, 'the approvals API is gone');
   });
 });
 
@@ -199,43 +193,15 @@ describe('REV-007: drafts can only be test-run by someone who may approve script
   });
 });
 
-describe('REV-008: the four-eyes threshold cannot be undercut by splitting', () => {
-  let ctx: TestCtx;
-  let api: ReturnType<typeof apiFor>;
-  before(async () => {
-    ctx = await setup({ FOUR_EYES_ENABLED: 'true', FOUR_EYES_DEVICE_THRESHOLD: '3' });
-    api = apiFor(ctx);
-  });
-  after(async () => ctx.close());
-
-  it('devices of a user\'s recent runs count towards the threshold', async () => {
-    const devs = [];
-    for (const h of ['S1', 'S2', 'S3', 'S4']) devs.push(await enrollOk(ctx, { hostname: h, os: 'linux' }));
-    const approver = (await userWithGrants(ctx, 'approver', ['jobs:read', 'jobs:approve'])).token;
-    const s = await api('POST', '/scripts', { name: 'split', interpreter: 'bash', content: 'echo 1' });
-    await api('POST', `/scripts/${s.body.id}/versions/1/approve`);
-    const run = (deviceId: string) => api('POST', `/scripts/${s.body.id}/run`, { targets: { deviceIds: [deviceId] } });
-
-    assert.equal((await run(devs[0]!.deviceId)).status, 201);
-    assert.equal((await run(devs[0]!.deviceId)).status, 201, 'the same device again does not add up');
-    assert.equal((await run(devs[1]!.deviceId)).status, 201);
-    const third = await run(devs[2]!.deviceId);
-    assert.equal(third.status, 202, 'third distinct device within the window reaches the threshold of 3');
-    assert.equal(third.body.approvalRequired, true);
-
-    // test runs are counted as well and have no approval path: refused
-    const t = await api('POST', `/scripts/${s.body.id}/versions/1/test`, { deviceId: devs[3]!.deviceId });
-    assert.equal(t.status, 409);
-    assert.equal(t.body.error.code, 'four_eyes_limit');
-
-    // approved runs do not count against the requester afterwards
-    assert.equal((await api('POST', `/approvals/${third.body.approvalId}/approve`, {}, approver)).body.status, 'approved');
-    assert.equal((await run(devs[0]!.deviceId)).status, 201);
-  });
-
-  it('script self-approval is off by default', async () => {
-    const { loadConfig } = await import('../src/config.ts');
-    assert.equal(loadConfig({}).SCRIPT_SELF_APPROVAL, false);
-    assert.equal(loadConfig({}).FOUR_EYES_WINDOW_MINUTES, 60);
+describe('removed four-eyes settings', () => {
+  it('the security settings only carry MFA', async () => {
+    const ctx = await setup();
+    try {
+      const res = await apiFor(ctx)('GET', '/settings/security');
+      assert.equal(res.status, 200);
+      assert.equal('fourEyes' in res.body, false);
+    } finally {
+      await ctx.close();
+    }
   });
 });

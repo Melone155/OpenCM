@@ -10,9 +10,7 @@ import { DEFAULT_OPTIONS, runJob } from '../jobs/engine.ts';
 import { resolveJobSteps } from '../jobs/steps.ts';
 import { SCRIPT_TEMPLATES } from '../jobs/templates.ts';
 import { assertInScope, scopeCondition } from '../auth/scope.ts';
-import { createApproval, massApprovalNeeded } from '../approvals.ts';
 import { actorOf, principalOf } from '../plugins/auth.ts';
-import { getSecurity, needsApproval } from '../settings.ts';
 import { productIndex } from '../vuln/evaluate.ts';
 import { FEEDS, requestSync } from '../vuln/feeds.ts';
 import { ensureBuiltinRules, loadRules, mapSoftware, ruleMatches, suggestProducts, type CpeRule } from '../vuln/mapping.ts';
@@ -272,31 +270,15 @@ export function vulnerabilityRoutes(app: FastifyInstance, config: Config) {
       return j!.id;
     });
     let run: { id: string } | null = null;
-    let approvalId: string | null = null;
-    if (body.runNow) {
-      if (await massApprovalNeeded(app.db, config, principalOf(req).userId, deviceIds, false)) {
-        const [job] = await app.db.select({ updatedAt: jobs.updatedAt }).from(jobs).where(eq(jobs.id, jobId));
-        approvalId = (
-          await createApproval(app.db, {
-            action: 'remediation.run',
-            summary: `Behebung ${cveId} auf ${deviceIds.length} Geräten ausführen`,
-            payload: { jobId, jobUpdatedAt: job!.updatedAt.toISOString() },
-            deviceCount: deviceIds.length,
-            requestedBy: principalOf(req).userId,
-          })
-        ).id;
-      } else {
-        run = await runJob(app.db, config, jobId, 'manual', principalOf(req).userId);
-      }
-    }
+    if (body.runNow) run = await runJob(app.db, config, jobId, 'manual', principalOf(req).userId);
     await writeAudit(app.db, actorOf(req), {
       action: 'vulnerability.remediation',
       targetType: 'vulnerability',
       targetId: cveId,
-      details: { jobId, devices: deviceIds.length, scriptId: body.scriptId, runId: run?.id ?? null, approvalId },
+      details: { jobId, devices: deviceIds.length, scriptId: body.scriptId, runId: run?.id ?? null },
       ip: req.ip,
     });
-    return reply.code(201).send({ jobId, runId: run?.id ?? null, approvalId, devices: deviceIds.length });
+    return reply.code(201).send({ jobId, runId: run?.id ?? null, devices: deviceIds.length });
   });
 
   app.get('/devices/:id/vulnerabilities', { preHandler: app.requireScopedPermission('vulnerabilities:read') }, async (req) => {

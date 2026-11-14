@@ -12,7 +12,7 @@ describe('permissions', () => {
     assert.equal(hasPermission(['users:read'], 'users:create'), false);
     assert.equal(hasPermission(['users:*'], 'users:delete'), true);
     assert.equal(hasPermission(['users:*'], 'roles:read'), false);
-    assert.equal(hasPermission(['*'], 'jobs:approve'), true);
+    assert.equal(hasPermission(['*'], 'scripts:approve'), true);
     assert.equal(hasPermission([], 'users:read'), false);
   });
 

@@ -77,8 +77,7 @@ export function Dashboard() {
             {d.patches && <Tile to="/patches" value={d.patches.devicesSecurity} label="Geräte mit Sicherheitsupdates" tone="warning" sub={`${d.patches.missingTotal} Updates ausstehend · ${d.patches.rebootPending} Neustarts`} />}
             {d.tasks && <Tile to="/runs" value={d.tasks.failed24h} label="Fehlgeschlagene Tasks (24 h)" tone="warning" />}
             {d.integrity && <Tile to="/audit" value={d.integrity.violations7d} label="Hash-Prüfung fehlgeschlagen (7 Tage)" tone="critical" sub="Manipulationsverdacht" />}
-            {d.deployments && <Tile to="/deployments" value={d.deployments.running} label="Laufende Verteilungen" sub={`${d.deployments.paused} angehalten · ${d.deployments.pendingApproval} warten auf Freigabe`} tone={d.deployments.paused ? 'warning' : undefined} />}
-            {d.approvals && <Tile to="/approvals" value={d.approvals.pending} label="Offene Freigaben" tone="warning" />}
+            {d.deployments && <Tile to="/deployments" value={d.deployments.running} label="Laufende Verteilungen" sub={`${d.deployments.paused} angehalten`} tone={d.deployments.paused ? 'warning' : undefined} />}
             {d.licenses && d.licenses.total > 0 && <Tile to="/licenses" value={d.licenses.overused} label="Softwarelizenzen überschritten" tone="warning" sub={`${d.licenses.expiringSoon} laufen bald ab`} />}
             {d.assets && d.assets.total > 0 && (
               <Tile to="/assets" value={d.assets.warrantyExpiring30d} label="Asset-Garantien laufen in 30 Tagen ab" tone="warning" sub={`${d.assets.total} Assets · ${d.assets.warrantyExpired} Garantie abgelaufen`} />

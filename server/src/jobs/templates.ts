@@ -2,8 +2,8 @@ import type { ScriptParameter } from '../db/schema.ts';
 
 /**
  * Script templates (e.g. for vulnerability remediation). Importing a template
- * creates a normal script in status "draft" – it must be reviewed and approved
- * before it can run anywhere.
+ * creates a normal script; like every new version it is released right away
+ * if the importing user holds scripts:approve.
  */
 export interface ScriptTemplate {
   id: string;

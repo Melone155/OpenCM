@@ -139,27 +139,6 @@ export const settings = pgTable('settings', {
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
 
-/** Four-eyes approvals for critical actions. */
-export const approvalRequests = pgTable(
-  'approval_requests',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    action: text('action').notNull(), // job.run | script.run | remediation.run | job.enable
-    summary: text('summary').notNull(),
-    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
-    deviceCount: integer('device_count').notNull().default(0),
-    status: text('status').notNull().default('pending'), // pending | approved | rejected | expired | failed
-    requestedBy: uuid('requested_by').references(() => users.id, { onDelete: 'set null' }),
-    requestedAt: ts('requested_at').notNull().defaultNow(),
-    expiresAt: ts('expires_at').notNull(),
-    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
-    decidedAt: ts('decided_at'),
-    reason: text('reason'),
-    result: jsonb('result').$type<Record<string, unknown>>(),
-  },
-  (t) => [index('approval_requests_status_idx').on(t.status, t.requestedAt)],
-);
-
 // ---------------------------------------------------------------- audit
 
 /** Append-only. UPDATE/DELETE are rejected by a trigger (migration 0001). */
@@ -721,11 +700,10 @@ export const deployments = pgTable(
     /** generated steps per OS, frozen at creation */
     steps: jsonb('steps').$type<Record<string, RunStep[]>>().notNull(),
     options: jsonb('options').$type<JobOptions & { timezone: string }>().notNull(),
-    status: text('status').notNull().default('running'), // pending_approval | running | paused | completed | cancelled
+    status: text('status').notNull().default('running'), // running | paused | completed | cancelled
     currentRing: integer('current_ring').notNull().default(-1),
     ringStartedAt: ts('ring_started_at'),
     pausedReason: text('paused_reason'),
-    approvalId: uuid('approval_id').references(() => approvalRequests.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

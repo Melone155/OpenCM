@@ -53,7 +53,7 @@ export function ScriptsPage() {
       {showTemplates && (
         <div className="card">
           <h2>Vorlagen</h2>
-          <p className="muted">Eine Vorlage wird als Entwurf übernommen und muss vor der Verwendung geprüft und freigegeben werden.</p>
+          <p className="muted">Eine Vorlage wird als normales Skript übernommen und ist sofort einsetzbar (wer Skripte nicht freigeben darf, erhält einen Entwurf).</p>
           <ul className="plain">
             {templates.data?.items.map((t) => (
               <li key={t.id}>

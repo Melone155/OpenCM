@@ -226,7 +226,7 @@ function InstallPanel({ include, onCancel }: { include: string[]; onCancel: () =
     setError(null);
     try {
       const r = await startDeployment({ kind: 'os_updates', patchFilter: { classification, include: useSelection ? include : [], reboot }, rings });
-      navigate(`/deployments/${r.id}`, { state: { approvalId: r.approvalId } });
+      navigate(`/deployments/${r.id}`);
     } catch (e) {
       setError((e as Error).message);
     }

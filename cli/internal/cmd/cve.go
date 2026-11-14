@@ -295,9 +295,8 @@ func newCveCmd() *cobra.Command {
 			}
 			var res struct {
 				JobID   string  `json:"jobId"`
-				RunID      *string `json:"runId"`
-				ApprovalID *string `json:"approvalId"`
-				Devices    int     `json:"devices"`
+				RunID   *string `json:"runId"`
+				Devices int     `json:"devices"`
 			}
 			if err := client.Do(http.MethodPost, "/vulnerabilities/"+url.PathEscape(strings.ToUpper(args[0]))+"/remediation", nil, map[string]any{"scriptId": scriptID, "params": p, "runNow": runNow}, &res); err != nil {
 				return err
@@ -307,9 +306,6 @@ func newCveCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), ", run %s started (opencm jobs status %s --watch)", *res.RunID, *res.RunID)
 			}
 			fmt.Fprintln(cmd.OutOrStdout())
-			if res.ApprovalID != nil {
-				return &pendingApprovalError{*res.ApprovalID}
-			}
 			return nil
 		},
 	}

@@ -201,59 +201,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/approvals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listApprovals"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/approvals/{id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Four-eyes – not by the requester. The action is executed on behalf of the requester (who must still be entitled); a changed job makes the request `failed`. */
-        post: operations["approveRequest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/approvals/{id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["rejectRequest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/settings/security": {
         parameters: {
             query?: never;
@@ -978,7 +925,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description draft → approved. With `SCRIPT_SELF_APPROVAL=false` the author cannot approve their own version. */
+        /** @description draft → approved. New versions are already released on creation when the author holds scripts:approve; approving an approved version returns it unchanged. */
         post: operations["approveScriptVersion"];
         delete?: never;
         options?: never;
@@ -1021,8 +968,7 @@ export interface paths {
         /**
          * Test-run a version on a single device
          * @description Approved versions need scripts:execute. A draft is unreviewed code and additionally needs the
-         *     global permission scripts:approve (403 otherwise). Test runs count towards the four-eyes
-         *     threshold; when it is reached the request is refused with 409 `four_eyes_limit`.
+         *     global permission scripts:approve (403 otherwise).
          */
         post: operations["testScriptVersion"];
         delete?: never;
@@ -1603,7 +1549,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description draft → approved after a full validation (file present). With `SCRIPT_SELF_APPROVAL=false` the author cannot approve. */
+        /** @description draft → approved after a full validation (file present). The author may release their own version. */
         post: operations["approvePackageVersion"];
         delete?: never;
         options?: never;
@@ -2416,46 +2362,8 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string | null;
         };
-        Approval: {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            action: "job.run" | "script.run" | "remediation.run" | "run.rerun" | "job.enable" | "deployment.start";
-            summary: string;
-            payload?: Record<string, never>;
-            deviceCount: number;
-            /** @enum {string} */
-            status: "pending" | "approved" | "rejected" | "expired" | "failed";
-            /** Format: uuid */
-            requestedBy?: string | null;
-            requesterName?: string | null;
-            /** Format: date-time */
-            requestedAt: string;
-            /** Format: date-time */
-            expiresAt: string;
-            /** Format: uuid */
-            decidedBy?: string | null;
-            /** Format: date-time */
-            decidedAt?: string | null;
-            reason?: string | null;
-            /** @description { runId } / { jobId, enabled } or { error } */
-            result?: Record<string, never> | null;
-            canDecide: boolean;
-        };
-        /** @description Four-eyes – the action was not executed; it waits for approval by a second person. */
-        ApprovalPending: {
-            /** @enum {boolean} */
-            approvalRequired: true;
-            /** Format: uuid */
-            approvalId: string;
-            devices: number;
-        };
         SecuritySettings: {
             mfaRequired: boolean;
-            fourEyes: {
-                enabled: boolean;
-                deviceThreshold: number;
-            };
             ldap: {
                 enabled: boolean;
                 url: string | null;
@@ -2886,11 +2794,6 @@ export interface components {
                 customFieldId?: string | null;
             }[];
             lastRun?: components["schemas"]["JobRun"] | null;
-            /**
-             * Format: uuid
-             * @description create/update only: broad scheduled job saved disabled until approved (four-eyes)
-             */
-            approvalId?: string | null;
         };
         JobRunBase: {
             /** Format: uuid */
@@ -3318,14 +3221,12 @@ export interface components {
             rings: components["schemas"]["DeploymentRing"][];
             options: components["schemas"]["JobOptions"];
             /** @enum {string} */
-            status: "created" | "pending_approval" | "running" | "paused" | "completed" | "cancelled";
+            status: "created" | "running" | "paused" | "completed" | "cancelled";
             /** @description -1 = not started yet */
             currentRing: number;
             /** Format: date-time */
             ringStartedAt?: string | null;
             pausedReason?: string | null;
-            /** Format: uuid */
-            approvalId?: string | null;
             /** Format: uuid */
             createdBy?: string | null;
             /** Format: date-time */
@@ -3358,7 +3259,6 @@ export interface components {
                 type: components["schemas"]["PackageType"];
             } | null;
             createdByName?: string | null;
-            approvalStatus: string | null;
             rings: (components["schemas"]["DeploymentRing"] & {
                 groupNames: string[];
                 stats: components["schemas"]["RingStats"];
@@ -3479,10 +3379,6 @@ export interface components {
             deployments?: {
                 running: number;
                 paused: number;
-                pendingApproval: number;
-            };
-            approvals?: {
-                pending: number;
             };
             integrity?: {
                 violations7d: number;
@@ -4291,98 +4187,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    listApprovals: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["Limit"];
-                offset?: components["parameters"]["Offset"];
-                status?: "pending" | "approved" | "rejected" | "expired" | "failed" | "all";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Requests */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["Approval"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    approveRequest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    reason?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Decided (status approved or failed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Approval"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
-    rejectRequest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    reason: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Rejected */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Approval"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
     getSecuritySettings: {
         parameters: {
             query?: never;
@@ -4416,10 +4220,6 @@ export interface operations {
             content: {
                 "application/json": {
                     mfaRequired?: boolean;
-                    fourEyes?: {
-                        enabled?: boolean;
-                        deviceThreshold?: number;
-                    };
                 };
             };
         };
@@ -6248,15 +6048,6 @@ export interface operations {
                     "application/json": components["schemas"]["JobRun"];
                 };
             };
-            /** @description Four-eyes approval required (not executed yet) */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApprovalPending"];
-                };
-            };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -6454,15 +6245,6 @@ export interface operations {
                     "application/json": components["schemas"]["JobRun"];
                 };
             };
-            /** @description Four-eyes approval required (not executed yet) */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApprovalPending"];
-                };
-            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -6624,15 +6406,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobRun"];
-                };
-            };
-            /** @description Four-eyes approval required (not executed yet) */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApprovalPending"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -6929,11 +6702,6 @@ export interface operations {
                         jobId: string;
                         /** Format: uuid */
                         runId?: string | null;
-                        /**
-                         * Format: uuid
-                         * @description set when runNow needs four-eyes approval
-                         */
-                        approvalId?: string | null;
                         devices: number;
                     };
                 };
@@ -7756,22 +7524,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Deployment"];
-                };
-            };
-            /** @description Four-eyes approval required – the deployment starts once a second person approves */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @enum {boolean} */
-                        approvalRequired: true;
-                        /** Format: uuid */
-                        approvalId: string;
-                        devices: number;
-                        deployment: components["schemas"]["Deployment"];
-                    };
                 };
             };
             400: components["responses"]["ValidationError"];

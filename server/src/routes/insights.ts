@@ -1,12 +1,11 @@
 import { and, desc, eq, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { APPROVER_PERMISSIONS } from '../approvals.ts';
 import { writeAudit } from '../audit.ts';
 import { hasPermission, type Permission } from '../auth/permissions.ts';
 import { hasAnyGrant } from '../auth/scope.ts';
 import type { Config } from '../config.ts';
-import { approvalMetrics, assetMetrics, deploymentMetrics, deviceMetrics, integrityMetrics, licenseMetrics, METRIC_KEYS, metricTrends, patchMetrics, taskMetrics, vulnMetrics } from '../dashboard.ts';
+import { assetMetrics, deploymentMetrics, deviceMetrics, integrityMetrics, licenseMetrics, METRIC_KEYS, metricTrends, patchMetrics, taskMetrics, vulnMetrics } from '../dashboard.ts';
 import { securityMetrics } from '../security/posture.ts';
 import { reports, users, type ReportFilter } from '../db/schema.ts';
 import { forbidden, IdParams, notFound, parse } from '../http.ts';
@@ -67,7 +66,6 @@ export function insightRoutes(app: FastifyInstance, config: Config) {
     if (hasAnyGrant(p, 'patches:read')) out.patches = await patchMetrics(app.db, await app.deviceScope(req, 'patches:read'));
     if (hasAnyGrant(p, 'jobs:read')) out.tasks = await taskMetrics(app.db, await app.deviceScope(req, 'jobs:read'));
     if (hasPermission(p.grants, 'software:read') || hasPermission(p.grants, 'patches:read')) out.deployments = await deploymentMetrics(app.db);
-    if (APPROVER_PERMISSIONS.some((x) => hasPermission(p.grants, x))) out.approvals = await approvalMetrics(app.db);
     if (hasPermission(p.grants, 'audit:read')) out.integrity = await integrityMetrics(app.db);
     if (hasPermission(p.grants, 'licenses:read')) out.licenses = await licenseMetrics(app.db);
     if (hasAnyGrant(p, 'inventory:read')) out.security = await securityMetrics(app.db, await app.deviceScope(req, 'inventory:read'));

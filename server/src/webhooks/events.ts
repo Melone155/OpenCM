@@ -13,7 +13,6 @@ export const EVENTS = {
   'task.failed': 'Task fehlgeschlagen (endgültig)',
   'deployment.completed': 'Verteilung abgeschlossen',
   'deployment.paused': 'Verteilung angehalten (Erfolgsquote/Fehler)',
-  'approval.requested': 'Freigabe angefordert (Vier-Augen)',
   'vulnerability.findings.new': 'Neue kritische / aktiv ausgenutzte Schwachstellen',
   'patch.scan_failed': 'Patch-Scan fehlgeschlagen',
   'security.integrity_violation': 'Hash-Prüfung fehlgeschlagen (Manipulationsverdacht)',

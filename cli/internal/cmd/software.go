@@ -429,11 +429,6 @@ func printDeploymentStart(cmd *cobra.Command, f output.Format, res map[string]an
 	if f != output.Table {
 		return output.Render[deployment](cmd.OutOrStdout(), f, res, nil, nil)
 	}
-	if res["approvalRequired"] == true {
-		d, _ := res["deployment"].(map[string]any)
-		fmt.Fprintf(cmd.OutOrStdout(), "Deployment %v created – waiting for four-eyes approval %v\n", d["id"], res["approvalId"])
-		return &pendingApprovalError{fmt.Sprint(res["approvalId"])}
-	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Deployment %v started (ring 1 running) – opencm deployments status %v\n", res["id"], res["id"])
 	return nil
 }

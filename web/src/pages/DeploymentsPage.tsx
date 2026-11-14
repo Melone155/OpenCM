@@ -1,24 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api, unwrap, type Schemas } from '../api/client';
 import { useAuth } from '../auth';
 import { fmtDate, useLoad } from '../hooks';
 
 export const DEPLOYMENT_STATUS: Record<string, string> = {
   created: 'angelegt',
-  pending_approval: 'wartet auf Freigabe',
   running: 'läuft',
   paused: 'angehalten',
   completed: 'abgeschlossen',
   cancelled: 'abgebrochen',
 };
-const statusClass = (s: string) => (s === 'completed' ? 'badge ok' : s === 'paused' || s === 'pending_approval' ? 'badge warn' : s === 'cancelled' ? 'badge danger' : 'badge');
+const statusClass = (s: string) => (s === 'completed' ? 'badge ok' : s === 'paused' ? 'badge warn' : s === 'cancelled' ? 'badge danger' : 'badge');
 
-/** POST /deployments; returns the deployment id and – if four-eyes applies – the approval id. */
-export async function startDeployment(body: Schemas['DeploymentInput']): Promise<{ id: string; approvalId: string | null }> {
+/** POST /deployments; returns the deployment id. */
+export async function startDeployment(body: Schemas['DeploymentInput']): Promise<{ id: string }> {
   const r = await unwrap(api.POST('/deployments', { body }));
-  if ('approvalRequired' in r) return { id: r.deployment.id, approvalId: r.approvalId };
-  return { id: r.id, approvalId: null };
+  return { id: r.id };
 }
 
 export function DeploymentsPage() {
@@ -100,15 +98,13 @@ export function Progress({ total, ok, failed }: { total: number; ok: number; fai
 export function DeploymentPage() {
   const { id = '' } = useParams();
   const { can } = useAuth();
-  const location = useLocation();
   const dep = useLoad(() => unwrap(api.GET('/deployments/{id}', { params: { path: { id } } })), [id]);
   const [error, setError] = useState<string | null>(null);
-  const approvalHint = (location.state as { approvalId?: string | null } | null)?.approvalId;
 
   // refresh while something is happening
   const d = dep.data;
   useEffect(() => {
-    if (!d || !['running', 'pending_approval'].includes(d.status)) return;
+    if (!d || d.status !== 'running') return;
     const t = setInterval(() => void dep.reload(), 5000);
     return () => clearInterval(t);
   }, [d?.status, dep.reload]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -160,11 +156,6 @@ export function DeploymentPage() {
         )}
       </div>
       {error && <div className="error">{error}</div>}
-      {(d.status === 'pending_approval' || approvalHint) && d.status === 'pending_approval' && (
-        <div className="card highlight">
-          Vier-Augen-Prinzip: Die Verteilung startet, sobald eine zweite Person zustimmt (<Link to="/approvals">Freigaben</Link>).
-        </div>
-      )}
       {d.pausedReason && d.status !== 'completed' && (
         <div className={d.pausedReason.includes('integrity:') ? 'error' : 'card'}>
           {d.pausedReason.includes('integrity:') && <strong>Hash-Prüfung fehlgeschlagen – </strong>}

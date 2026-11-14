@@ -75,9 +75,9 @@ Die Änderungshistorie erfasst Hardware, OS, Software, Patches, Starttyp von Die
 ## Skripte & Jobs (M2)
 
 ### Ablauf
-1. **Skript anlegen** (Web → Skripte, oder API). Jede Änderung erzeugt eine neue, unveränderliche Version (`draft`). Die Datenbank verhindert per Trigger, dass Inhalte nachträglich geändert werden.
+1. **Skript anlegen** (Web → Skripte, oder API). Jede Änderung erzeugt eine neue, unveränderliche Version. Wer `scripts:approve` hat, bekommt sie gleich freigegeben, alle anderen einen Entwurf (`draft`). Die Datenbank verhindert per Trigger, dass Inhalte nachträglich geändert werden.
 2. **Testlauf** auf einem einzelnen Gerät (Recht `scripts:execute`). Die Ausgabe erscheint live. Einen **Entwurf** darf nur testen, wer zusätzlich `scripts:approve` hat: Ein Entwurf ist ungeprüfter Code, und ohne diese Regel ließe sich die Freigabe über Testläufe umgehen.
-3. **Freigeben** (`scripts:approve`). Nur freigegebene Versionen dürfen in Jobs und Ad-hoc-Läufen verwendet werden. Der Autor darf seine eigene Version standardmäßig nicht freigeben (`SCRIPT_SELF_APPROVAL=false`). Für Installationen mit nur einem Administrator lässt sich das mit `SCRIPT_SELF_APPROVAL=true` abschalten.
+3. **Freigeben** (`scripts:approve`), nur bei Entwürfen nötig. Nur freigegebene Versionen dürfen in Jobs und Ad-hoc-Läufen verwendet werden. Eine zweite Person ist nicht nötig, auch die eigene Version darf man freigeben.
 4. **Job** anlegen:
    - Schritte in fester Reihenfolge, mit Parametern, Option „Fehler ignorieren“ und optionalem Ziel-Feld
    - Ziele: Geräte, statische oder dynamische Gruppen, alle Geräte
@@ -166,17 +166,6 @@ Rollen werden Benutzern direkt oder über Benutzergruppen zugewiesen (System →
 - Eingeschränkte Zuweisungen wirken nur auf gerätebezogene Rechte: Geräte, Inventar, Schwachstellen, Ad-hoc-Skriptläufe sowie Ausführungen und Ausgaben. Verwaltungsrechte (Benutzer, Rollen, Skripte bearbeiten, Jobs anlegen, Einstellungen) brauchen immer eine globale Zuweisung.
 - Niemand kann Rechte vergeben, die er selbst nicht global besitzt.
 
-### Vier-Augen-Prinzip
-Massenaktionen werden erst ausgeführt, wenn eine **zweite Person** mit dem Recht `jobs:approve` zustimmt (Web → Freigaben, CLI `opencm approvals list|approve|reject`). Als Massenaktion gilt ein Ziel „Alle Geräte“ oder ab der eingestellten Geräteanzahl (Standard 50, System → Sicherheit). Betroffen sind:
-- Job „jetzt ausführen“ und Ad-hoc-Skriptläufe (die API antwortet mit `202` und `approvalId`)
-- Behebungs-Jobs mit „sofort ausführen“
-- geplante Jobs mit breitem Ziel: sie werden deaktiviert gespeichert und erst mit der Freigabe aktiviert
-- das Wiederholen einer Ausführung (`rerun`)
-
-**Aufteilen hilft nicht:** Für die Schwelle zählen auch die Geräte der eigenen Ausführungen der letzten 60 Minuten (`FOUR_EYES_WINDOW_MINUTES`, 0 = jede Anfrage für sich). Wer nacheinander mehrere kleine Läufe startet, braucht ab der Schwelle ebenfalls eine Freigabe. Bereits freigegebene Läufe und Verteilungen zählen nicht mit. Testläufe zählen mit, haben aber keinen Freigabeweg: Ist die Schwelle erreicht, lehnt der Server sie mit `409 four_eyes_limit` ab.
-
-Eigene Anfragen kann man nicht selbst freigeben. Bei der Freigabe wird geprüft, ob die anfragende Person die Rechte noch hat und ob der Job inzwischen geändert wurde. Ablehnen braucht eine Begründung, und offene Anfragen verfallen nach 24 h. Die CLI beendet sich mit **Exitcode 8**, wenn eine Aktion auf Freigabe wartet.
-
 ### Zwei-Faktor-Anmeldung (TOTP)
 Jeder Benutzer richtet MFA unter seinem Profil ein: QR-Code mit einer Authenticator-App scannen (z. B. Microsoft/Google Authenticator, 2FAS, KeePassXC) und mit einem Code bestätigen. Er erhält dabei 10 Wiederherstellungscodes, die je einmal gültig sind. Ist „MFA für alle verpflichtend“ aktiv, kann ein Benutzer ohne MFA nach der Anmeldung nur die Einrichtung durchführen. Verliert jemand sein Gerät, setzt ein Admin MFA unter System → Benutzer → „MFA zurücksetzen“ zurück. Das TOTP-Geheimnis liegt AES-256-GCM-verschlüsselt in der Datenbank, der Schlüssel unter `PKI_DIR/secrets.key` (im Volume `pki`, also **mit sichern**). CLI: `opencm login --otp 123456` oder interaktive Abfrage.
 
@@ -213,7 +202,7 @@ Web → Softwareverteilung → **Pakete** (CLI `opencm packages …`). Ein Paket
   - Nach der Installation: Wird es nicht erkannt, gilt der Lauf als fehlgeschlagen, auch wenn der Installer 0 meldet.
   - Software-Regeln liefern zusätzlich den **Installationsstand** aus dem Inventar.
 - **Exitcodes:** Erfolg ist standardmäßig `0`. `3010` und `1641` gelten als „erfolgreich, Neustart nötig“. Neustarts löst OpenCM nicht aus, sie erscheinen nur als `OPENCM-REBOOT-REQUIRED` in der Ausgabe.
-- **Freigabe** wie bei Skripten: Nur freigegebene Versionen sind verteilbar, und sie sind danach unveränderlich (zusätzlich per DB-Trigger erzwungen). Mit `SCRIPT_SELF_APPROVAL=false` muss eine zweite Person freigeben. Unter „Erzeugtes Installationsskript“ ist genau das Skript zu sehen, das auf den Geräten läuft.
+- **Freigabe** wie bei Skripten: Nur freigegebene Versionen sind verteilbar, und sie sind danach unveränderlich (zusätzlich per DB-Trigger erzwungen). Die eigene Version darf man selbst freigeben. Unter „Erzeugtes Installationsskript“ ist genau das Skript zu sehen, das auf den Geräten läuft.
 - **Repository:** Dateien liegen inhaltsadressiert unter `/data/files/packages/<sha256>` im Volume `files`. Gleiche Dateien werden nur einmal gespeichert. Die Maximalgröße steuert `PACKAGE_MAX_BYTES`.
 
 ### Verteilung in Ringen
@@ -224,7 +213,7 @@ Paket → **Verteilen …** bzw. `opencm deploy 7-Zip --ring Test=group:IT --rin
 3. Liegt die Quote darunter, wird die Verteilung **angehalten**. Dann mit „Nächsten Ring jetzt starten“ fortfahren oder abbrechen.
 4. Geräte, die schon in einem früheren Ring dran waren, bekommen den Auftrag kein zweites Mal. Einzelne fehlgeschlagene Geräte lassen sich in der Ausführung über „Fehlgeschlagene wiederholen“ erneut starten.
 
-Verteilungen auf „alle Geräte“ oder ab der Vier-Augen-Schwelle brauchen eine Freigabe mit `software:approve` (bei Updates `patches:approve`). Wartungsfenster und Wiederholungen wie bei Jobs lassen sich über die API setzen (`options`).
+Wartungsfenster und Wiederholungen wie bei Jobs lassen sich über die API setzen (`options`).
 
 ### Bandbreite
 Installationsdateien laden die Agents über die mTLS-Verbindung (`/agent/v1/files/<sha256>`, abgebrochene Downloads werden fortgesetzt). Begrenzung: `PACKAGE_BANDWIDTH_KBPS` gilt für alle Downloads zusammen, `PACKAGE_BANDWIDTH_PER_DEVICE_KBPS` je Gerät. Bei 1.000 Geräten und 200 MB pro Paket empfiehlt sich zusätzlich, die Ringe zu staffeln.
@@ -245,7 +234,7 @@ Installationsdateien laden die Agents über die mTLS-Verbindung (`/agent/v1/file
 
 ### Dashboard
 Die Startseite zeigt Kennzahlen je Bereich. Sichtbar sind nur Bereiche, für die man ein Leserecht hat, und bei eingeschränkten Rollen nur Geräte im eigenen Geltungsbereich.
-- **Kacheln:** Geräte, aktiv ausgenutzte und kritische Schwachstellen, Sicherheitsupdates, fehlgeschlagene Tasks, Hash-Verstöße, Verteilungen, Freigaben, Softwarelizenzen.
+- **Kacheln:** Geräte, aktiv ausgenutzte und kritische Schwachstellen, Sicherheitsupdates, fehlgeschlagene Tasks, Hash-Verstöße, Verteilungen, Softwarelizenzen.
 - **Verlauf:** Der Worker speichert stündlich die Tageswerte (`metrics_daily`, Aufbewahrung `METRICS_RETENTION_DAYS`). Trends erscheinen ab dem zweiten Tag und nur für Benutzer mit globalem Leserecht des Bereichs.
 
 ### Berichte
@@ -263,7 +252,6 @@ System → **Webhooks**: URL (https) und Ereignisse wählen. Das Geheimnis wird 
 | `device.enrolled` | neues oder neu registriertes Gerät |
 | `run.completed` / `task.failed` | Ausführung beendet / Task endgültig fehlgeschlagen |
 | `deployment.completed` / `deployment.paused` | Verteilung fertig / angehalten (Quote, Hash-Fehler) |
-| `approval.requested` | Vier-Augen-Freigabe angefordert |
 | `vulnerability.findings.new` | neue kritische oder aktiv ausgenutzte Befunde |
 | `patch.scan_failed` | Patch-Scan fehlgeschlagen |
 | `security.integrity_violation` | Hash-Prüfung fehlgeschlagen |

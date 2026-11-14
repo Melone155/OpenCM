@@ -39,7 +39,7 @@ func newDashboardCmd() *cobra.Command {
 				return output.Render[struct{}](cmd.OutOrStdout(), f, d, nil, nil)
 			}
 			w := cmd.OutOrStdout()
-			sections := []string{"devices", "vulnerabilities", "security", "patches", "tasks", "deployments", "approvals", "integrity", "licenses", "assets"}
+			sections := []string{"devices", "vulnerabilities", "security", "patches", "tasks", "deployments", "integrity", "licenses", "assets"}
 			for _, s := range sections {
 				m, ok := d[s].(map[string]any)
 				if !ok {

@@ -6,14 +6,13 @@ import { useLoad } from '../hooks';
 export function SecuritySettingsPage() {
   const { can } = useAuth();
   const s = useLoad(() => unwrap(api.GET('/settings/security')));
-  const [threshold, setThreshold] = useState<number | null>(null);
   const [ldapUser, setLdapUser] = useState('');
   const [ldapResult, setLdapResult] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const edit = can('settings:update');
 
-  async function patch(body: { mfaRequired?: boolean; fourEyes?: { enabled?: boolean; deviceThreshold?: number } }) {
+  async function patch(body: { mfaRequired?: boolean }) {
     setError(null);
     try {
       await unwrap(api.PATCH('/settings/security', { body }));
@@ -44,31 +43,6 @@ export function SecuritySettingsPage() {
       <h1>Sicherheit</h1>
       {msg && <div className="card">{msg}</div>}
       {error && <div className="error">{error}</div>}
-      <div className="card">
-        <h2>Vier-Augen-Prinzip</h2>
-        <label className="check">
-          <input type="checkbox" checked={d.fourEyes.enabled} disabled={!edit} onChange={(e) => void patch({ fourEyes: { enabled: e.target.checked } })} />
-          Massenaktionen brauchen die Freigabe einer zweiten Person
-        </label>
-        <div className="form-inline">
-          <label className="inline">
-            ab
-            <input
-              type="number"
-              min={0}
-              disabled={!edit}
-              value={threshold ?? d.fourEyes.deviceThreshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-              style={{ width: '6rem' }}
-            />
-            Geräten (0 = nur „Alle Geräte“)
-          </label>
-          {edit && threshold !== null && threshold !== d.fourEyes.deviceThreshold && (
-            <button onClick={() => void patch({ fourEyes: { deviceThreshold: threshold } }).then(() => setThreshold(null))}>Übernehmen</button>
-          )}
-        </div>
-        <p className="muted">Gilt für: Job ausführen, Ad-hoc-Skriptläufe, Behebungs-Jobs mit „sofort ausführen“ und das Aktivieren geplanter Jobs mit breitem Ziel.</p>
-      </div>
       <div className="card">
         <h2>Zwei-Faktor-Anmeldung</h2>
         <label className="check">

@@ -71,6 +71,13 @@
       "when": 1763337600000,
       "tag": "0009_enrollment_token_unlimited",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1763424000000,
+      "tag": "0010_remove_four_eyes",
+      "breakpoints": true
     }
   ]
 }

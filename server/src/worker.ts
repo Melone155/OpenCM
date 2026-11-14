@@ -48,7 +48,7 @@ const worker = new Worker(
         const r = await schedulerTick(handle.db, config);
         if (r.startedRuns || r.timedOut) log.info({ job: job.name, ...r }, 'scheduler tick');
         const d = await deploymentTick(handle.db, config);
-        if (d.promoted || d.paused || d.completed || d.cancelled) log.info({ job: job.name, ...d }, 'deployment tick');
+        if (d.promoted || d.paused || d.completed) log.info({ job: job.name, ...d }, 'deployment tick');
         const s = await patchScanTick(handle.db, config);
         if (s.devices) log.info({ job: job.name, devices: s.devices }, 'automatic patch scan started');
         break;

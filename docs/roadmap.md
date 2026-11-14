@@ -15,7 +15,7 @@
 | 6 | Administration | OIDC/SAML-SSO | – | M4+ | P2 | ⬜ |
 | 7 | Administration | MFA (TOTP) | RFC 6238, QR-Einrichtung, Replay-Schutz, 10 Wiederherstellungscodes, optional verpflichtend, Admin-Reset, `opencm login --otp` | M4 | P1 | ✅ |
 | 8 | Administration | Protokollierung aller Benutzeraktionen | `audit_log` (append-only per Trigger), `/audit-log`, Export CSV/JSON (`/audit-log/export`, `opencm audit export`) | M0/M4 | P1 | ✅ |
-| 9 | Administration | Vier-Augen-Freigabe kritischer Aktionen | `approval_requests`: Massenausführungen (alle Geräte / ab Schwelle) und Aktivierung breiter Zeitpläne; Selbstfreigabe gesperrt, Web „Freigaben“, `opencm approvals` | M4 | P1 | ✅ |
+| 9 | Administration | Vier-Augen-Freigabe kritischer Aktionen | Bewusst entfernt: Massenaktionen starten sofort, Versionen gibt man selbst frei | M4 | – | – |
 | 10 | Administration | API-Zugänge/Tokens | `oct_`-Tokens (Hash), Rechte = Schnittmenge mit Besitzer, Laufzeit-Limit, Widerruf, Web + `opencm tokens` | M4 | P1 | ✅ |
 | 11 | Agent | Agent für Windows/Linux/macOS, nur ausgehende Verbindungen | `opencm-agent` (Go): Dienst unter Windows/systemd/launchd | M1 | P1 | ✅ (Go-Build nur in CI) |
 | 12 | Agent | Registrierung neuer Clients | Enrollment-Token (Ablauf, max. Nutzungen, Zielgruppe) → CSR → Client-Zertifikat, mTLS-Endpoint :8443, sofortiger Widerruf | M1 | P1 | ✅ |
@@ -29,7 +29,7 @@
 | 20 | Inventarisierung | Änderungshistorie pro Gerät | `device_history` per Diff, ohne flüchtige Werte | M1 | P1 | ✅ |
 | 21 | Inventarisierung | Geräte ohne Agent (Assets) | `assets`: Typ, Status, Hersteller/Modell, Serien- und Inventarnummer (eindeutig), Standort, Person, IP/MAC, Kaufdatum, Garantie, Kosten, Verknüpfung mit verwaltetem Gerät; CSV-Import (Excel-Format, Probelauf, Abgleich über Inventar-/Seriennummer) und -Export; Berichtsquelle, Dashboard-Kachel „Garantie läuft ab“; Web „Assets“, Geräte-Reiter „Zubehör“, `opencm assets` | M7 | P3 | ✅ (Netzwerk-Scan zur automatischen Erkennung: offen) |
 | 22 | Client-Steuerung | Skript-Bibliothek (PowerShell, Bash, zsh, Python, CMD) | `scripts` + unveränderliche `script_versions` | M2 | P1 | ✅ |
-| 23 | Client-Steuerung | Parameter, Versionierung, Freigabe (Entwurf → freigegeben) | Parameter als Env-Variablen, Freigabe/Zurückziehen, optional ohne Selbstfreigabe | M2 | P1 | ✅ (Vier-Augen: M4) |
+| 23 | Client-Steuerung | Parameter, Versionierung, Freigabe (Entwurf → freigegeben) | Parameter als Env-Variablen, Freigabe/Zurückziehen; mit `scripts:approve` sofort freigegeben | M2 | P1 | ✅ |
 | 24 | Client-Steuerung | Editor mit Syntax-Highlighting, Testlauf auf einem Gerät | CodeMirror 6 (statt Monaco, s. Architektur), Testlauf auch für Entwürfe | M2 | P1 | ✅ |
 | 25 | Client-Steuerung | Live-Ausgabe stdout/stderr/Exitcode | Streaming vom Agent, Cursor-Polling in Web/CLI, Exitcode je Schritt | M2 | P1 | ✅ |
 | 26 | Client-Steuerung | Visueller Baustein-Editor | – | M6+ | P3 | ⬜ |
@@ -42,7 +42,7 @@
 | 33 | Schwachstellen | Software → CPE-Mapping inkl. manueller Regeln | ~60 mitgelieferte Regeln + eigene Glob-Regeln + Heuristik gegen NVD-Produkte, Vorschläge für nicht zugeordnete Software | M3 | P1 | ✅ |
 | 34 | Schwachstellen | Übersicht betroffener Geräte, CVSS, KEV-Markierung, EPSS | Risiko-sortierte Liste, Kacheln, Gerätedetail, Risikoakzeptanz, Konfidenzstufen | M3 | P1/P2 | ✅ |
 | 35 | Schwachstellen | Behebungs-Job direkt aus der Schwachstelle | Job mit freigegebenem Skript für alle betroffenen Geräte (+ sofort ausführen); Vorlagen winget/MSI/choco/apt/dnf/macOS | M3 | P1 | ✅ |
-| 36 | Softwareverteilung | Pakete (MSI/EXE/winget/choco, apt/dnf, pkg/brew) mit Erkennungsregeln | 11 Typen inkl. DEB/RPM und eigene Befehle; Erkennung per Software/Datei/Registry/Befehl vor und nach der Installation; Exitcode- und Neustart-Codes; Freigabe, unveränderliche Versionen; Installationsstand aus dem Inventar; Verteilung in Ringen mit automatischer Weiterschaltung, Pause unter Erfolgsquote, Vier-Augen | M5 | P2 | ✅ |
+| 36 | Softwareverteilung | Pakete (MSI/EXE/winget/choco, apt/dnf, pkg/brew) mit Erkennungsregeln | 11 Typen inkl. DEB/RPM und eigene Befehle; Erkennung per Software/Datei/Registry/Befehl vor und nach der Installation; Exitcode- und Neustart-Codes; Freigabe, unveränderliche Versionen; Installationsstand aus dem Inventar; Verteilung in Ringen mit automatischer Weiterschaltung, Pause unter Erfolgsquote | M5 | P2 | ✅ |
 | 37 | Softwareverteilung | Paket-Repository, Bandbreitenbegrenzung | inhaltsadressiert (SHA-256, dedupliziert) im Volume `files`, Upload gestreamt; Download über mTLS mit Range-Fortsetzung, Token-Bucket global + je Gerät | M5 | P2 | ✅ (keine Verteilpunkte/P2P: P3) |
 | 38 | Patch-Management | Windows-/Linux-/macOS-Updates, Freigaberinge, Berichte | Scan (Windows Update Agent/WSUS, apt, dnf, softwareupdate) automatisch + manuell; Installation nach Klassifikation oder Auswahl in Ringen, Neustart-Richtlinie, Rescan; Patchstand-Übersicht, Geräte-/Update-Ansicht, CSV | M5 | P2 | ✅ |
 | 38a | Sicherheit | Manipulationsschutz für Skripte und Dateien | SHA-256 beim Speichern, 1:1-Prüfung vor Run-Anlage, Auslieferung und auf dem Gerät; HMAC-Siegel (Schlüssel außerhalb der DB); Abbruch mit „Hash-Prüfung fehlgeschlagen“ + Audit | M5 | P1 | ✅ |

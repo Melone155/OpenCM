@@ -49,7 +49,7 @@ func newRoot() *cobra.Command {
 	})
 
 	root.AddCommand(newLoginCmd(), newLogoutCmd(), newWhoamiCmd(), newProfileCmd(), newUsersCmd(), newRolesCmd(), newAuditCmd(),
-		newDevicesCmd(), newEnrollmentCmd(), newAgentCmd(), newGroupsCmd(), newScriptsCmd(), newJobsCmd(), newTasksCmd(), newCveCmd(), newSoftwareCmd(), newTokensCmd(), newApprovalsCmd(),
+		newDevicesCmd(), newEnrollmentCmd(), newAgentCmd(), newGroupsCmd(), newScriptsCmd(), newJobsCmd(), newTasksCmd(), newCveCmd(), newSoftwareCmd(), newTokensCmd(),
 		newPackagesCmd(), newDeployCmd(), newDeploymentsCmd(), newPatchesCmd(),
 		newDashboardCmd(), newReportsCmd(), newWebhooksCmd(), newLicensesCmd(),
 		newSecurityCmd(), newAssetsCmd())
@@ -85,10 +85,6 @@ func Execute() int {
 	var failed *runFailedError
 	if errors.As(err, &failed) {
 		return ExitRunFailed
-	}
-	var pending *pendingApprovalError
-	if errors.As(err, &pending) {
-		return ExitPendingApproval
 	}
 	return ExitError
 }

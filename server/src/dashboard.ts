@@ -7,7 +7,7 @@ import { and, count, countDistinct, eq, gte, inArray, isNull, lt, or, sql, type 
 import type { DeviceScope } from './auth/scope.ts';
 import { onlineThresholdSeconds, type Config } from './config.ts';
 import type { Db } from './db/client.ts';
-import { approvalRequests, assets, auditLog, deployments, devicePatches, devicePatchState, devices, deviceVulnerabilities, metricsDaily, tasks, vulnerabilities } from './db/schema.ts';
+import { assets, auditLog, deployments, devicePatches, devicePatchState, devices, deviceVulnerabilities, metricsDaily, tasks, vulnerabilities } from './db/schema.ts';
 import { evaluateLicenses, listLicenses } from './licenses.ts';
 import { securityMetrics } from './security/posture.ts';
 
@@ -95,14 +95,9 @@ export async function integrityMetrics(db: Db, now = new Date()) {
 }
 
 export async function deploymentMetrics(db: Db) {
-  const rows = await db.select({ status: deployments.status, n: count() }).from(deployments).where(inArray(deployments.status, ['running', 'paused', 'pending_approval'])).groupBy(deployments.status);
+  const rows = await db.select({ status: deployments.status, n: count() }).from(deployments).where(inArray(deployments.status, ['running', 'paused'])).groupBy(deployments.status);
   const by = Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]));
-  return { running: by.running ?? 0, paused: by.paused ?? 0, pendingApproval: by.pending_approval ?? 0 };
-}
-
-export async function approvalMetrics(db: Db) {
-  const [r] = await db.select({ n: count() }).from(approvalRequests).where(and(eq(approvalRequests.status, 'pending'), gte(approvalRequests.expiresAt, new Date())));
-  return { pending: Number(r?.n ?? 0) };
+  return { running: by.running ?? 0, paused: by.paused ?? 0 };
 }
 
 export async function licenseMetrics(db: Db) {

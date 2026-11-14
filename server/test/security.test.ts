@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import type { Directory, DirectoryUser } from '../src/auth/ldap.ts';
 import { buildUserFilter, ldapEscape } from '../src/auth/ldap.ts';
 import { base32Decode, counterAt, hotp } from '../src/auth/totp.ts';
-import { apiTokens, approvalRequests, jobs, users } from '../src/db/schema.ts';
+import { apiTokens, users } from '../src/db/schema.ts';
 import { enrollOk, type EnrolledAgent } from './agent-helpers.ts';
 import { ADMIN, bearer, login, setup, userWithGrants, type TestCtx } from './helpers.ts';
 
@@ -147,110 +147,24 @@ describe('M4: permission scopes (device groups)', () => {
 
 // ====================================================================== four-eyes
 
-describe('M4: four-eyes principle', () => {
+describe('M4: security settings', () => {
   let ctx: TestCtx;
   let api: ReturnType<typeof apiFor>;
-  let approver: string;
-  let scriptId: string;
-  let devs: EnrolledAgent[];
-
   before(async () => {
-    ctx = await setup({ FOUR_EYES_ENABLED: 'true', FOUR_EYES_DEVICE_THRESHOLD: '2' });
+    ctx = await setup();
     api = apiFor(ctx);
-    devs = [await enrollOk(ctx, { hostname: 'A1', os: 'linux' }), await enrollOk(ctx, { hostname: 'A2', os: 'linux' }), await enrollOk(ctx, { hostname: 'A3', os: 'linux' })];
-    approver = (await userWithGrants(ctx, 'approver', ['jobs:read', 'jobs:approve'])).token;
-    scriptId = await approvedScript(api, 'mass-script', 'bash');
   });
   after(async () => ctx.close());
 
-  const job = async (targets: object, extra: object = {}) =>
-    (await api('POST', '/jobs', { name: `j-${Math.random()}`, trigger: 'manual', targets, steps: [{ scriptId }], ...extra })).body;
-
-  it('small runs execute directly, mass runs need approval', async () => {
-    const small = await job({ deviceIds: [devs[0]!.deviceId] });
-    assert.equal((await api('POST', `/jobs/${small.id}/run`)).status, 201);
-    const mass = await job({ deviceIds: devs.map((d) => d.deviceId) });
-    const r = await api('POST', `/jobs/${mass.id}/run`);
-    assert.equal(r.status, 202);
-    assert.equal(r.body.approvalRequired, true);
-    assert.equal(r.body.devices, 3);
-    assert.equal((await api('GET', `/jobs/${mass.id}/runs`)).body.total, 0, 'nothing executed yet');
-  });
-
-  it('requester cannot approve; another approver executes as the requester', async () => {
-    const mass = await job({ allDevices: true });
-    const r = await api('POST', `/jobs/${mass.id}/run`);
-    const id = r.body.approvalId;
-    assert.equal((await api('POST', `/approvals/${id}/approve`, {})).status, 403, 'four-eyes: not your own');
-    const list = (await api('GET', '/approvals', undefined, approver)).body.items;
-    const entry = list.find((x: { id: string }) => x.id === id);
-    assert.equal(entry.canDecide, true);
-    assert.equal(entry.requesterName, 'admin');
-    const ok = await api('POST', `/approvals/${id}/approve`, {}, approver);
-    assert.equal(ok.body.status, 'approved');
-    const runId = ok.body.result.runId;
-    const run = await api('GET', `/runs/${runId}`);
-    assert.equal(run.body.counts.total, 3);
-    const me = (await api('GET', '/auth/me')).body;
-    assert.equal(run.body.triggeredBy, me.id, 'run is attributed to the requester');
-    assert.equal((await api('POST', `/approvals/${id}/approve`, {}, approver)).status, 409, 'decided once');
-    const audit = (await api('GET', '/audit-log?action=approval.approve')).body;
-    assert.equal(audit.total, 1);
-  });
-
-  it('reject needs a reason; changed jobs and expired requests are not executed', async () => {
-    const mass = await job({ allDevices: true });
-    const a1 = (await api('POST', `/jobs/${mass.id}/run`)).body.approvalId;
-    assert.equal((await api('POST', `/approvals/${a1}/reject`, {}, approver)).status, 400);
-    assert.equal((await api('POST', `/approvals/${a1}/reject`, { reason: 'nicht im Wartungsfenster' }, approver)).body.status, 'rejected');
-
-    const a2 = (await api('POST', `/jobs/${mass.id}/run`)).body.approvalId;
-    await api('PATCH', `/jobs/${mass.id}`, { description: 'geändert' });
-    const changed = await api('POST', `/approvals/${a2}/approve`, {}, approver);
-    assert.equal(changed.body.status, 'failed');
-    assert.match(changed.body.result.error, /changed after the request/);
-
-    const a3 = (await api('POST', `/jobs/${mass.id}/run`)).body.approvalId;
-    await ctx.handle.db.update(approvalRequests).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(approvalRequests.id, a3));
-    const expired = (await api('GET', '/approvals?status=expired', undefined, approver)).body.items.map((x: { id: string }) => x.id);
-    assert.ok(expired.includes(a3));
-    assert.equal((await api('POST', `/approvals/${a3}/approve`, {}, approver)).status, 409);
-  });
-
-  it('ad-hoc mass runs and broad scheduled jobs need approval too', async () => {
-    const adhoc = await api('POST', `/scripts/${scriptId}/run`, { targets: { allDevices: true } });
-    assert.equal(adhoc.status, 202);
-    const done = await api('POST', `/approvals/${adhoc.body.approvalId}/approve`, {}, approver);
-    assert.equal(done.body.status, 'approved');
-    assert.ok(done.body.result.runId);
-
-    const scheduled = await api('POST', '/jobs', { name: 'nightly-all', trigger: 'cron', cron: '0 2 * * *', targets: { allDevices: true }, steps: [{ scriptId }] });
-    assert.equal(scheduled.status, 201);
-    assert.equal(scheduled.body.enabled, false, 'saved disabled until approved');
-    assert.equal(scheduled.body.nextRunAt, null);
-    assert.ok(scheduled.body.approvalId);
-    await api('POST', `/approvals/${scheduled.body.approvalId}/approve`, {}, approver);
-    const [row] = await ctx.handle.db.select().from(jobs).where(eq(jobs.id, scheduled.body.id));
-    assert.equal(row!.enabled, true);
-    assert.ok(row!.nextRunAt, 'schedule re-computed');
-
-    // editing an approved broad job disables it again
-    const edited = await api('PATCH', `/jobs/${scheduled.body.id}`, { cron: '0 3 * * *' });
-    assert.equal(edited.body.enabled, false);
-    assert.ok(edited.body.approvalId);
-  });
-
-  it('policy is configurable at runtime (settings:update, audited)', async () => {
+  it('are configurable at runtime (settings:update, audited)', async () => {
     const viewer = (await userWithGrants(ctx, 'settings-viewer', ['settings:read'])).token;
-    assert.equal((await api('GET', '/settings/security', undefined, viewer)).body.fourEyes.deviceThreshold, 2);
-    assert.equal((await api('PATCH', '/settings/security', { fourEyes: { deviceThreshold: 10 } }, viewer)).status, 403);
-    const s = await api('PATCH', '/settings/security', { fourEyes: { deviceThreshold: 10 } });
-    assert.equal(s.body.fourEyes.deviceThreshold, 10);
-    assert.equal(s.body.fourEyes.enabled, true, 'other values kept');
-    const mass = await job({ deviceIds: devs.map((d) => d.deviceId) });
-    assert.equal((await api('POST', `/jobs/${mass.id}/run`)).status, 201, 'below new threshold');
+    assert.equal((await api('GET', '/settings/security', undefined, viewer)).body.mfaRequired, false);
+    assert.equal((await api('PATCH', '/settings/security', { mfaRequired: false }, viewer)).status, 403);
+    const s = await api('PATCH', '/settings/security', { mfaRequired: false, fourEyes: { enabled: true } });
+    assert.equal(s.status, 200);
+    assert.equal('fourEyes' in s.body, false, 'the removed four-eyes setting is ignored');
     const audit = (await api('GET', '/audit-log?action=settings.security_update')).body.items[0];
-    assert.equal(audit.details.before.fourEyes.deviceThreshold, 2);
+    assert.equal(audit.details.after.mfaRequired, false);
   });
 });
 

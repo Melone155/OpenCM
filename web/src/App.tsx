@@ -1,6 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
-import { ApprovalsPage } from './pages/ApprovalsPage';
 import { AssetsPage } from './pages/AssetsPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { AuditPage } from './pages/AuditPage';
@@ -61,7 +60,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: '/scripts', label: 'Skripte', permission: 'scripts:read' },
       { to: '/jobs', label: 'Jobs', permission: 'jobs:read' },
       { to: '/runs', label: 'Aktivität', permission: ['jobs:read', 'scripts:execute'], scoped: true },
-      { to: '/approvals', label: 'Freigaben', permission: ['jobs:approve', 'jobs:execute', 'software:approve', 'software:execute', 'patches:approve', 'patches:execute'], scoped: true },
     ],
   },
   {
@@ -145,7 +143,6 @@ export function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/approvals" element={<ApprovalsPage />} />
           {canScoped('devices:read') && <Route path="/devices" element={<DevicesPage />} />}
           {canScoped('devices:read') && <Route path="/devices/:id" element={<DevicePage />} />}
           {can('devices:create') && <Route path="/enrollment" element={<EnrollmentPage />} />}

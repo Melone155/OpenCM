@@ -1,17 +1,15 @@
 import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { createApproval } from '../approvals.ts';
 import { writeAudit } from '../audit.ts';
 import { hasPermission, type Permission } from '../auth/permissions.ts';
 import type { Config } from '../config.ts';
-import { approvalRequests, deployments, deviceGroups, jobRuns, packages, packageVersions, users } from '../db/schema.ts';
+import { deployments, deviceGroups, jobRuns, packages, packageVersions, users } from '../db/schema.ts';
 import { forbidden, HttpError, IdParams, notFound, Pagination, parse, Uuid } from '../http.ts';
 import {
   cancelDeployment,
   createDeployment,
   pauseDeployment,
-  plannedDevices,
   promote,
   resumeDeployment,
   ringStats,
@@ -19,7 +17,6 @@ import {
   type DeploymentRow,
 } from '../packages/deploy.ts';
 import { actorOf, principalOf } from '../plugins/auth.ts';
-import { getSecurity, needsApproval } from '../settings.ts';
 
 const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
 const Targets = z.object({
@@ -96,14 +93,12 @@ export function deploymentRoutes(app: FastifyInstance, config: Config) {
     const groupIds = [...new Set(d.rings.flatMap((r) => r.targets.groupIds))];
     const groups = groupIds.length ? await app.db.select({ id: deviceGroups.id, name: deviceGroups.name }).from(deviceGroups).where(inArray(deviceGroups.id, groupIds)) : [];
     const [creator] = d.createdBy ? await app.db.select({ username: users.username }).from(users).where(eq(users.id, d.createdBy)) : [];
-    const approval = d.approvalId ? (await app.db.select({ status: approvalRequests.status }).from(approvalRequests).where(eq(approvalRequests.id, d.approvalId)))[0] : undefined;
     const { steps, ...rest } = d;
     return {
       ...rest,
       platforms: Object.keys(steps),
       package: pkg,
       createdByName: creator?.username ?? null,
-      approvalStatus: approval?.status ?? null,
       rings: d.rings.map((r, i) => ({ ...r, groupNames: r.targets.groupIds.map((g) => groups.find((x) => x.id === g)?.name ?? g), stats: stats[i]! })),
       runs,
     };
@@ -148,21 +143,7 @@ export function deploymentRoutes(app: FastifyInstance, config: Config) {
     }
     const me = principalOf(req).userId;
     const dep = await createDeployment(app.db, { ...body, patchFilter: body.patchFilter ?? null, options: body.options as never }, me);
-    const planned = await plannedDevices(app.db, config, dep);
-    const security = await getSecurity(app.db, config);
-    const audit = { kind: dep.kind, packageVersionId: dep.packageVersionId, action: dep.action, rings: dep.rings.map((r) => r.name), devices: planned.count };
-    if (needsApproval(security, { deviceCount: planned.count, allDevices: planned.allDevices })) {
-      const approval = await createApproval(app.db, {
-        action: 'deployment.start',
-        summary: `Verteilung „${dep.name}“ starten (${planned.allDevices ? 'alle Geräte' : `${planned.count} Geräte`}, ${dep.rings.length} Ring${dep.rings.length > 1 ? 'e' : ''})`,
-        payload: { deploymentId: dep.id, kind: dep.kind },
-        deviceCount: planned.count,
-        requestedBy: me,
-      });
-      const [d] = await app.db.update(deployments).set({ status: 'pending_approval', approvalId: approval.id }).where(eq(deployments.id, dep.id)).returning();
-      await writeAudit(app.db, actorOf(req), { action: 'deployment.create', targetType: 'deployment', targetId: dep.id, details: { ...audit, approvalId: approval.id }, ip: req.ip });
-      return reply.code(202).send({ approvalRequired: true, approvalId: approval.id, devices: planned.count, deployment: await detail(d!) });
-    }
+    const audit = { kind: dep.kind, packageVersionId: dep.packageVersionId, action: dep.action, rings: dep.rings.map((r) => r.name) };
     await startRing(app.db, config, dep.id, -1, 0, me, ['created']);
     await writeAudit(app.db, actorOf(req), { action: 'deployment.create', targetType: 'deployment', targetId: dep.id, details: audit, ip: req.ip });
     return reply.code(201).send(await detail(await load(dep.id)));

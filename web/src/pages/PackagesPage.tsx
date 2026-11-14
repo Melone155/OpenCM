@@ -695,7 +695,7 @@ function DeployForm({ packageName, version, platform, onCancel }: { packageName:
     setBusy(true);
     try {
       const r = await startDeployment({ kind: 'package', packageVersionId: version.id, action, rings });
-      navigate(`/deployments/${r.id}`, { state: { approvalId: r.approvalId } });
+      navigate(`/deployments/${r.id}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {

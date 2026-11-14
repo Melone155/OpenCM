@@ -56,7 +56,7 @@ export function ScriptPage() {
 
   async function saveVersion() {
     if (!draft) return;
-    const r = await act(unwrap(api.POST('/scripts/{id}/versions', { params: { path: { id } }, body: draft })), 'Neue Version als Entwurf gespeichert.');
+    const r = await act(unwrap(api.POST('/scripts/{id}/versions', { params: { path: { id } }, body: draft })), can('scripts:approve') ? 'Neue Version gespeichert und freigegeben.' : 'Neue Version als Entwurf gespeichert.');
     if (r) {
       setDraft(null);
       setSelected(r.version);
@@ -105,7 +105,7 @@ export function ScriptPage() {
                 <input value={draft.changeNote} onChange={(e) => setDraft({ ...draft, changeNote: e.target.value })} />
               </label>
               <p>
-                <button onClick={() => void saveVersion()}>Als Entwurf speichern</button>{' '}
+                <button onClick={() => void saveVersion()}>{can('scripts:approve') ? 'Speichern' : 'Als Entwurf speichern'}</button>{' '}
                 <button className="link" onClick={() => setDraft(null)}>
                   Verwerfen
                 </button>

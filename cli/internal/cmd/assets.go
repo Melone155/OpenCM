@@ -297,7 +297,7 @@ func resolveAssetID(c *api.Client, ref string) (string, error) {
 // assetFlags collects the editable fields; only flags the user set end up in the request body.
 type assetFlags struct {
 	typ, status, manufacturer, model, serial, inventory, location, assigned, ip, mac, purchased, warranty, device, notes string
-	cost                                                                                                                float64
+	cost                                                                                                                 float64
 }
 
 func (af *assetFlags) register(cmd *cobra.Command) {
@@ -553,12 +553,12 @@ deviceHostname/Gerät. Dates as YYYY-MM-DD or DD.MM.YYYY.`,
 				return err
 			}
 			var res struct {
-				DryRun   bool `json:"dryRun"`
-				Rows     int  `json:"rows"`
-				Created  int  `json:"created"`
-				Updated  int  `json:"updated"`
-				Skipped  int  `json:"skipped"`
-				Errors   []struct {
+				DryRun  bool `json:"dryRun"`
+				Rows    int  `json:"rows"`
+				Created int  `json:"created"`
+				Updated int  `json:"updated"`
+				Skipped int  `json:"skipped"`
+				Errors  []struct {
 					Line    int    `json:"line"`
 					Message string `json:"message"`
 				} `json:"errors"`

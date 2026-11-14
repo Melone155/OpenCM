@@ -22,13 +22,11 @@ import {
 } from '../db/schema.ts';
 import { resolveTargets } from '../groups/filter.ts';
 import { conflict, forbidden, HttpError, IdParams, notFound, Pagination, parse, Uuid } from '../http.ts';
-import { cancelRun, cancelTasks, createRun, DEFAULT_OPTIONS, rerun, rerunDeviceIds, runJob, TERMINAL } from '../jobs/engine.ts';
+import { cancelRun, cancelTasks, createRun, DEFAULT_OPTIONS, rerun, runJob, TERMINAL } from '../jobs/engine.ts';
 import { resolveJobSteps } from '../jobs/steps.ts';
 import { assertCron, isValidTimezone, nextCronRun } from '../jobs/schedule.ts';
-import { createApproval, massApprovalNeeded } from '../approvals.ts';
 import { hasAnyGrant, inScope } from '../auth/scope.ts';
 import { actorOf, principalOf } from '../plugins/auth.ts';
-import { getSecurity, needsApproval } from '../settings.ts';
 
 const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
 const Options = z.object({
@@ -141,24 +139,6 @@ export function jobRoutes(app: FastifyInstance, config: Config) {
     const ids = resolved.filter((id) => scope.ids.has(id));
     if (!ids.length) throw conflict('None of the target devices is within your permission scope');
     return { ids, global: false };
-  }
-
-  /** Scheduled jobs with broad targets must be enabled by a second person (four-eyes). */
-  async function guardScheduledJob(req: FastifyRequest, jobId: string): Promise<string | null> {
-    const [job] = await app.db.select().from(jobs).where(eq(jobs.id, jobId));
-    if (!job || !job.enabled || job.trigger === 'manual') return null;
-    const security = await getSecurity(app.db, config);
-    const deviceCount = (await resolveTargets(app.db, job.targets, online)).length;
-    if (!needsApproval(security, { deviceCount, allDevices: job.targets.allDevices })) return null;
-    await app.db.update(jobs).set({ enabled: false, nextRunAt: null }).where(eq(jobs.id, jobId));
-    const approval = await createApproval(app.db, {
-      action: 'job.enable',
-      summary: `Geplanten Job „${job.name}“ aktivieren (${job.targets.allDevices ? 'alle Geräte' : `${deviceCount} Geräte`})`,
-      payload: { jobId, jobUpdatedAt: job.updatedAt.toISOString() },
-      deviceCount,
-      requestedBy: principalOf(req).userId,
-    });
-    return approval.id;
   }
 
   // ------------------------------------------------------------ validation helpers
@@ -296,8 +276,7 @@ export function jobRoutes(app: FastifyInstance, config: Config) {
       details: { name: body.name, trigger: body.trigger, targets: body.targets, steps: steps.length },
       ip: req.ip,
     });
-    const approvalId = await guardScheduledJob(req, id);
-    return reply.code(201).send({ ...(await loadJob(app.db, id)), approvalId });
+    return reply.code(201).send(await loadJob(app.db, id));
   });
 
   app.get('/jobs/:id', { preHandler: app.requirePermission('jobs:read') }, async (req) => {
@@ -338,8 +317,7 @@ export function jobRoutes(app: FastifyInstance, config: Config) {
       if (steps) await writeSteps(tx as unknown as Db, id, steps);
     });
     await writeAudit(app.db, actorOf(req), { action: 'job.update', targetType: 'job', targetId: id, details: { fields: Object.keys(body) }, ip: req.ip });
-    const approvalId = await guardScheduledJob(req, id);
-    return { ...(await loadJob(app.db, id)), approvalId };
+    return loadJob(app.db, id);
   });
 
   app.delete('/jobs/:id', { preHandler: app.requirePermission('jobs:delete') }, async (req, reply) => {
@@ -371,19 +349,6 @@ export function jobRoutes(app: FastifyInstance, config: Config) {
     if (body.deviceIds) resolved = resolved.filter((d) => body.deviceIds!.includes(d));
     const scoped = await restrictToScope(req, resolved, body.deviceIds);
     const deviceIds = scoped.global ? body.deviceIds : scoped.ids;
-
-    const allDevices = job.targets.allDevices && scoped.global && !body.deviceIds;
-    if (await massApprovalNeeded(app.db, config, principalOf(req).userId, scoped.ids, allDevices)) {
-      const approval = await createApproval(app.db, {
-        action: 'job.run',
-        summary: `Job „${job.name}“ ausführen (${allDevices ? 'alle Geräte' : `${scoped.ids.length} Geräte`})`,
-        payload: { jobId: id, jobUpdatedAt: job.updatedAt.toISOString(), ...(deviceIds && { deviceIds }) },
-        deviceCount: scoped.ids.length,
-        requestedBy: principalOf(req).userId,
-      });
-      await writeAudit(app.db, actorOf(req), { action: 'job.run_requested', targetType: 'job', targetId: id, details: { approvalId: approval.id, devices: scoped.ids.length }, ip: req.ip });
-      return reply.code(202).send({ approvalRequired: true, approvalId: approval.id, devices: scoped.ids.length });
-    }
     const run = await runJob(app.db, config, id, 'manual', principalOf(req).userId, deviceIds);
     await writeAudit(app.db, actorOf(req), { action: 'job.run', targetType: 'job', targetId: id, details: { runId: run.id, deviceIds: deviceIds ?? 'all targets' }, ip: req.ip });
     return reply.code(201).send(await withCounts(app.db, run));
@@ -410,18 +375,6 @@ export function jobRoutes(app: FastifyInstance, config: Config) {
     const scope = await app.deviceScope(req, 'jobs:execute');
     if (body.targets.allDevices && !scope.all) throw forbidden('"All devices" requires a global jobs:execute permission');
     const { ids: deviceIds } = await restrictToScope(req, await resolveTargets(app.db, body.targets, online), body.targets.deviceIds);
-
-    if (await massApprovalNeeded(app.db, config, principalOf(req).userId, deviceIds, body.targets.allDevices)) {
-      const approval = await createApproval(app.db, {
-        action: 'script.run',
-        summary: `Skript „${script.name}“ v${v!.version} ad hoc ausführen (${body.targets.allDevices ? 'alle Geräte' : `${deviceIds.length} Geräte`})`,
-        payload: { scriptId: id, scriptVersionId: v!.id, params: step!.params, deviceIds, timeoutSeconds: body.timeoutSeconds },
-        deviceCount: deviceIds.length,
-        requestedBy: principalOf(req).userId,
-      });
-      await writeAudit(app.db, actorOf(req), { action: 'script.run_requested', targetType: 'script', targetId: id, details: { approvalId: approval.id, devices: deviceIds.length }, ip: req.ip });
-      return reply.code(202).send({ approvalRequired: true, approvalId: approval.id, devices: deviceIds.length });
-    }
     const run = await createRun(app.db, {
       jobId: null,
       name: `Ad-hoc: ${script.name} v${v!.version}`,
@@ -530,19 +483,6 @@ export function jobRoutes(app: FastifyInstance, config: Config) {
     const run = await loadRun(id);
     await assertRunVisible(req, run);
     await needsExec(req, run);
-    // a rerun is a new execution: mass reruns need a second person like the first run (REV-003)
-    const deviceIds = await rerunDeviceIds(app.db, id, body.onlyFailed);
-    if (await massApprovalNeeded(app.db, config, principalOf(req).userId, deviceIds, false)) {
-      const approval = await createApproval(app.db, {
-        action: 'run.rerun',
-        summary: `Ausführung „${run.name}“ wiederholen (${deviceIds.length} Geräte${body.onlyFailed ? ', nur fehlgeschlagene' : ''})`,
-        payload: { runId: id, onlyFailed: body.onlyFailed },
-        deviceCount: deviceIds.length,
-        requestedBy: principalOf(req).userId,
-      });
-      await writeAudit(app.db, actorOf(req), { action: 'run.rerun_requested', targetType: 'run', targetId: id, details: { approvalId: approval.id, devices: deviceIds.length }, ip: req.ip });
-      return reply.code(202).send({ approvalRequired: true, approvalId: approval.id, devices: deviceIds.length });
-    }
     const next = await rerun(app.db, id, body.onlyFailed, principalOf(req).userId);
     await writeAudit(app.db, actorOf(req), { action: 'run.rerun', targetType: 'run', targetId: id, details: { newRunId: next.id, onlyFailed: body.onlyFailed }, ip: req.ip });
     return reply.code(201).send(await withCounts(app.db, next));

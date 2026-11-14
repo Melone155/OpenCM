@@ -60,10 +60,6 @@ export async function setup(overrides: Partial<Record<keyof Config, string>> = {
     PUBLIC_URL: 'https://cm.test.local',
     LOGIN_RATE_LIMIT_PER_MIN: '1000',
     ENROLL_RATE_LIMIT_PER_MIN: '1000',
-    // four-eyes is covered by its own tests; older suites run mass actions directly
-    FOUR_EYES_ENABLED: 'false',
-    // default is false (second person required); most suites approve their own scripts
-    SCRIPT_SELF_APPROVAL: 'true',
     BOOTSTRAP_ADMIN_USER: ADMIN.username,
     BOOTSTRAP_ADMIN_PASSWORD: ADMIN.password,
     PKI_DIR: join(tmp, 'pki'),

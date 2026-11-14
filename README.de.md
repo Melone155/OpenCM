@@ -33,7 +33,7 @@ OpenCM ist eine **Open-Source-Plattform für Client-Management**, die Sie auf Ih
 
 - **Was ist vorhanden?** Hardware, Betriebssysteme, installierte Software, Benutzer und der Sicherheitsstatus jedes Geräts, dazu Geräte ohne Agent wie Monitore, Drucker und Telefone.
 - **Wo ist ein Risiko?** Die installierte Software wird mit den Schwachstellen-Datenbanken NVD, CISA KEV und OSV abgeglichen. Fehlende Betriebssystem-Updates und schwache Sicherheitseinstellungen (z. B. BitLocker aus) werden gemeldet.
-- **Was muss sich ändern?** Skripte, Softwarepakete und Updates werden stufenweise auf ausgewählte Geräte verteilt, mit Freigaben, Vier-Augen-Prinzip und Manipulationsschutz.
+- **Was muss sich ändern?** Skripte, Softwarepakete und Updates werden stufenweise auf ausgewählte Geräte verteilt, mit versionierten Freigaben und Manipulationsschutz.
 
 Auf jedem Gerät läuft ein kleiner Agent. Er baut ausschließlich **ausgehende** Verbindungen zum Server auf, verschlüsselt und gegenseitig authentifiziert (mTLS). Bedient wird alles über die **Weboberfläche**, das Kommandozeilenwerkzeug **`opencm`** oder die **REST-API**.
 
@@ -87,7 +87,7 @@ OpenCM ist **freie Software unter der MIT-Lizenz**. Es gibt keine Lizenzschlüss
 | 📦 **Software & Patches** | Paket-Repository, stufenweise Verteilung in Ringen, Bandbreitenbegrenzung, Windows Update / apt / dnf / softwareupdate |
 | 📊 **Berichte** | Dashboard mit Trends, Bericht-Editor über 8 Datenquellen, CSV-Export |
 | 🔔 **Integration** | Signierte Webhooks, vollständige REST-API (OpenAPI 3.1), CLI für jedes Modul |
-| 👥 **Zugriffskontrolle** | Feingranulare Rollen, Beschränkung auf Gerätegruppen, Vier-Augen-Freigaben, MFA, API-Tokens, LDAP / Active Directory |
+| 👥 **Zugriffskontrolle** | Feingranulare Rollen, Beschränkung auf Gerätegruppen, MFA, API-Tokens, LDAP / Active Directory |
 | 🔐 **Manipulationsschutz** | SHA-256 + HMAC-Siegel für jedes Skript und jede Datei, auf dem Gerät vor der Ausführung erneut geprüft |
 
 ---
@@ -153,7 +153,7 @@ Monitore, Drucker, Telefone, Netzwerkgeräte, Dockingstationen und Geräte im La
 
 - **Skript-Bibliothek:**
   - Sprachen: PowerShell, CMD, Bash, zsh und Python.
-  - Jede Änderung erzeugt eine neue, **unveränderliche Version**. Eine Version durchläuft Entwurf, freigegeben und zurückgezogen; ausführen lassen sich nur freigegebene Versionen.
+  - Jede Änderung erzeugt eine neue, **unveränderliche Version**. Eine neue Version ist sofort freigegeben, wenn Sie Skripte freigeben dürfen (`scripts:approve`), sonst beginnt sie als Entwurf; ausführen lassen sich nur freigegebene Versionen.
   - Parameter kommen als Umgebungsvariablen `OPENCM_PARAM_<NAME>` im Skript an.
   - Editor mit Syntax-Hervorhebung (CodeMirror), Vorlagen (winget, Chocolatey, apt, dnf, macOS-Updates …) und **Testlauf auf einem einzelnen Gerät** (Entwürfe kann nur testen, wer Skripte auch freigeben darf).
 - **Jobs:**
@@ -214,7 +214,7 @@ Jedes Inventar enthält den Sicherheitsstatus des Geräts. Die Abfragen sind rei
   - Agents laden über mTLS; abgebrochene Downloads werden fortgesetzt (Range).
 - **Erkennungsregeln** entscheiden, ob ein Paket schon installiert ist bzw. die Installation geklappt hat: Software mit Version, Datei, Registry-Wert oder ein Befehl. Sie werden vor und nach der Installation geprüft.
 - **Exitcodes:** Sie legen fest, welche Codes als Erfolg und welche als „Neustart nötig“ gelten.
-- **Versionen mit Freigabe** (optional Vier-Augen); eine freigegebene Version lässt sich nicht mehr ändern (von der Datenbank erzwungen).
+- **Versionen mit Freigabe:** Die eigene Version geben Sie mit einem Klick frei; eine freigegebene Version lässt sich nicht mehr ändern (von der Datenbank erzwungen).
 - **Verteilung in Ringen** (z. B. Test → Pilot → Alle):
   - Der nächste Ring startet automatisch nach einer Wartezeit und einer Mindest-Erfolgsquote.
   - Ein Ring pausiert automatisch, wenn zu viele Geräte scheitern; er lässt sich fortsetzen oder abbrechen.
@@ -238,7 +238,7 @@ Jedes Inventar enthält den Sicherheitsstatus des Geräts. Die Abfragen sind rei
 ### Dashboard & Berichte
 
 - **Dashboard:**
-  - Kennzahlen je Bereich: Geräte, Schwachstellen, Sicherheitsstatus, Updates, fehlgeschlagene Tasks, Verteilungen, Freigaben, Lizenzen und Assets.
+  - Kennzahlen je Bereich: Geräte, Schwachstellen, Sicherheitsstatus, Updates, fehlgeschlagene Tasks, Verteilungen, Lizenzen und Assets.
   - Was angezeigt wird, hängt von Ihren Rechten und Ihrem Geräte-Geltungsbereich ab.
 - **Trends** über 30, 90 oder 365 Tage. Der Worker speichert die Werte stündlich.
 - **Bericht-Editor** mit 8 Datenquellen: Geräte, Software, Schwachstellen-Befunde, ausstehende Updates, Task-Ergebnisse, Softwarelizenzen, Sicherheitsstatus und Assets.
@@ -255,7 +255,6 @@ Webhooks schicken signierte Benachrichtigungen an andere Systeme, etwa ein Ticke
 | `device.enrolled` | ein neues Gerät wurde registriert |
 | `run.completed` / `task.failed` | eine Ausführung ist beendet / ein Task ist endgültig fehlgeschlagen |
 | `deployment.completed` / `deployment.paused` | eine Verteilung ist fertig / wurde angehalten |
-| `approval.requested` | eine Vier-Augen-Freigabe wird benötigt |
 | `vulnerability.findings.new` | neue kritische oder aktiv ausgenutzte Befunde |
 | `patch.scan_failed` | ein Patch-Scan ist fehlgeschlagen |
 | `security.integrity_violation` | eine Hash-Prüfung ist fehlgeschlagen (Manipulationsverdacht) |
@@ -280,9 +279,6 @@ Dieses Modul verwaltet die Lizenzen, die Ihre Organisation für **Fremdsoftware*
 
 - **Rollen** mit feingranularen Rechten je Modul und Aktion (`devices:read`, `jobs:execute`, `software:approve` …), dazu die Systemrollen Administrator, Auditor und Helpdesk.
 - **Geltungsbereiche:** Eine Rolle lässt sich auf Gerätegruppen beschränken, z. B. „Helpdesk München sieht nur die Münchner Geräte“. Geräte außerhalb bleiben unsichtbar (die API antwortet mit 404).
-- **Vier-Augen-Freigabe:**
-  - Nötig für Massenaktionen (alle Geräte oder mehr als ein Schwellwert), für das Aktivieren breiter Zeitpläne und für Verteilungen.
-  - Die eigene Anfrage lässt sich nicht selbst freigeben.
 - **MFA (TOTP):** Einrichtung per QR-Code; 10 Wiederherstellungscodes; kann verpflichtend gemacht werden; Admins können sie zurücksetzen.
 - **API-Tokens:** Ein Token hat nie mehr Rechte als sein Besitzer, hat eine maximale Laufzeit und lässt sich widerrufen.
 - **LDAP / Active Directory:** Anmeldung mit verschachtelten AD-Gruppen, die OpenCM-Gruppen zugeordnet werden; das Benutzerkonto wird bei der ersten Anmeldung automatisch angelegt.
@@ -452,14 +448,13 @@ opencm dashboard
 opencm reports query software --filter "name contains firefox" --filter "version lt 130"
 opencm webhooks create Ticketsystem https://tickets.example.org/hooks/opencm --event security.integrity_violation
 opencm tokens create ci --permission devices:read --days 30
-opencm approvals list && opencm approvals approve <id>
 opencm audit export --format csv -f audit.csv
 opencm completion powershell | Out-String | Invoke-Expression
 ```
 
 - Ausgabe als Tabelle (Standard) oder mit `-o json|yaml` für Skripte.
 - Mehrere Server werden als Profile verwaltet (`--profile`).
-- **Exitcodes:** 0 OK · 1 Fehler · 2 Aufruf · 3 nicht angemeldet · 4 keine Berechtigung · 5 nicht gefunden · 6 Konflikt · 7 Ausführung fehlgeschlagen (`--watch`) · 8 wartet auf Freigabe.
+- **Exitcodes:** 0 OK · 1 Fehler · 2 Aufruf · 3 nicht angemeldet · 4 keine Berechtigung · 5 nicht gefunden · 6 Konflikt · 7 Ausführung fehlgeschlagen (`--watch`).
 
 ---
 
@@ -487,7 +482,6 @@ Alle Einstellungen sind Umgebungsvariablen in `deploy/.env`; `deploy/.env.exampl
 | `POSTGRES_PASSWORD` | – | Datenbank-Passwort |
 | `BOOTSTRAP_ADMIN_USER` / `_PASSWORD` | – | Erster Admin (nur beim ersten Start) |
 | `AGENT_HEARTBEAT_SECONDS` | `60` | Meldeintervall der Agents |
-| `FOUR_EYES_ENABLED`, `FOUR_EYES_DEVICE_THRESHOLD` | `true`, `50` | Vier-Augen-Freigabe für Massenaktionen |
 | `MFA_REQUIRED` | `false` | MFA für alle verpflichtend |
 | `LDAP_URL`, `LDAP_BIND_DN`, `LDAP_BASE_DN` … | – | Anmeldung über LDAP / Active Directory |
 | `VULN_FEEDS_ENABLED`, `NVD_API_KEY` | `true`, – | Schwachstellen-Feeds; ein (kostenloser) NVD-Schlüssel beschleunigt den ersten Spiegel |
@@ -508,7 +502,7 @@ Alle Einstellungen sind Umgebungsvariablen in `deploy/.env`; `deploy/.env.exampl
   - Aufträge sind mit Ed25519 signiert, Agent-Updates ebenso.
 - **Manipulationsschutz:** SHA-256 plus HMAC-Siegel für alles, was ausgeführt wird (siehe [Manipulationsschutz](#manipulationsschutz)).
 - **Passwörter und Tokens:** Passwörter werden mit Argon2id gehasht. Session- und API-Tokens liegen nur als SHA-256-Hash vor. MFA-Geheimnisse sind mit AES-256-GCM verschlüsselt.
-- **Minimale Rechte:** Rechte je Modul und Aktion, Geltungsbereiche auf Gerätegruppen und Vier-Augen-Freigaben.
+- **Minimale Rechte:** Rechte je Modul und Aktion sowie Geltungsbereiche auf Gerätegruppen.
 - **Audit:** ein Audit-Log, das sich nur ergänzen lässt, mit Export.
 - **Kein SQL vom Client:** Berichtsfilter werden aus festen Listen zusammengesetzt, und Werte werden als Parameter übergeben.
 - **Datenschutz:** OSV erhält nur Paketnamen und Versionen. Es werden keine Telemetriedaten an irgendjemanden gesendet.
@@ -573,7 +567,7 @@ Regeln für Beiträge:
 | M1 | Agent & Inventar |
 | M2 | Skripte & Jobs |
 | M3 | Schwachstellen (NVD, KEV, EPSS) |
-| M4 | Berechtigungen: Geltungsbereiche, Vier-Augen, MFA, API-Tokens, LDAP/AD |
+| M4 | Berechtigungen: Geltungsbereiche, MFA, API-Tokens, LDAP/AD |
 | M5 | Softwareverteilung in Ringen, Patch-Management, Manipulationsschutz |
 | M6 | Dashboard, Berichte, Webhooks, Softwarelizenzen |
 | M7 | OSV für Linux-Distributionen, Sicherheitsstatus, Assets ohne Agent |

@@ -17,7 +17,11 @@ Regressionstests: `server/test/review-fixes.test.ts`.
 
 - Enrollment-Tokens können unbegrenzt gültig sein (`expiresInHours: null`, Web „unbegrenzt“, CLI `--expires-in 0`; Migration `0009`).
 
+### Entfernt
+- **Vier-Augen-Prinzip:** Jobs, Ad-hoc-Skriptläufe, Wiederholungen, Behebungs-Jobs, geplante Jobs und Verteilungen starten sofort, auch auf „alle Geräte“, ohne Freigabe durch eine zweite Person. Entfallen sind die Seite „Freigaben“, `/api/v1/approvals`, `opencm approvals`, der CLI-Exitcode 8, die Einstellung unter System → Sicherheit, die Rechte `jobs:approve` und `patches:approve`, das Webhook-Ereignis `approval.requested` sowie `FOUR_EYES_ENABLED`, `FOUR_EYES_DEVICE_THRESHOLD`, `FOUR_EYES_WINDOW_MINUTES` und `SCRIPT_SELF_APPROVAL`. Migration `0010` bricht noch wartende Verteilungen ab und löscht die offenen Freigabeanfragen.
+
 ### Geändert
+- Neue Skriptversionen (auch aus Vorlagen) sind sofort freigegeben, wenn der Autor `scripts:approve` hat; ohne dieses Recht entsteht weiter ein Entwurf. Paketversionen und Entwürfe darf man selbst freigeben. Das erneute Freigeben einer bereits freigegebenen Skriptversion liefert sie unverändert zurück (statt 409).
 - Ein gelöschter Enrollment-Token wird jetzt wirklich gelöscht statt nur widerrufen: Er funktioniert sofort nicht mehr und verschwindet aus der Liste (Audit-Aktion `enrollment_token.delete`). Web: „Löschen“ mit Rückfrage für jeden Token; CLI: `opencm enrollment-tokens delete` (alter Name `revoke` bleibt als Alias).
 
 ### Behoben

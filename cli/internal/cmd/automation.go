@@ -419,11 +419,11 @@ func newScriptsCmd() *cobra.Command {
 				return err
 			}
 			body := map[string]any{"targets": t, "params": p, "version": v, "timeoutSeconds": timeout}
-			var r runStart
+			var r run
 			if err := client.Do(http.MethodPost, "/scripts/"+url.PathEscape(args[0])+"/run", nil, body, &r); err != nil {
 				return err
 			}
-			return handleRunStart(cmd, client, f, r, watch)
+			return startedRun(cmd, client, f, r, watch)
 		},
 	}
 	runCmd.Flags().StringArrayVarP(&targets, "target", "t", nil, "all | group:<name> | device:<hostname> (repeatable)")
@@ -494,11 +494,11 @@ func newJobsCmd() *cobra.Command {
 			if len(deviceIDs) > 0 {
 				body["deviceIds"] = deviceIDs
 			}
-			var r runStart
+			var r run
 			if err := client.Do(http.MethodPost, "/jobs/"+url.PathEscape(args[0])+"/run", nil, body, &r); err != nil {
 				return err
 			}
-			return handleRunStart(cmd, client, f, r, watch)
+			return startedRun(cmd, client, f, r, watch)
 		},
 	}
 	runJob.Flags().StringSliceVar(&deviceIDs, "device", nil, "restrict to these target device ids")
@@ -560,15 +560,10 @@ func newJobsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				// a mass rerun answers 202 with an approval request instead of a run (four-eyes)
-				var rs runStart
-				if err := client.Do(http.MethodPost, "/runs/"+url.PathEscape(args[0])+path, nil, body(), &rs); err != nil {
+				var r run
+				if err := client.Do(http.MethodPost, "/runs/"+url.PathEscape(args[0])+path, nil, body(), &r); err != nil {
 					return err
 				}
-				if rs.ApprovalRequired {
-					return handleRunStart(cmd, client, f, rs, false)
-				}
-				r := rs.run
 				if f == output.Table {
 					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s\n", done, r.ID)
 				}

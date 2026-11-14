@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, unwrap } from '../api/client';
 import { useAuth } from '../auth';
 import { TaskOutput } from '../components/TaskOutput';
@@ -15,8 +15,6 @@ export function JobPage() {
   const runs = useLoad(() => unwrap(api.GET('/jobs/{id}/runs', { params: { path: { id }, query: { limit: 50 } } })), [id]);
   const targets = useLoad(() => unwrap(api.GET('/jobs/{id}/targets', { params: { path: { id } } })), [id]);
   const [error, setError] = useState<string | null>(null);
-  const location = useLocation();
-  const pendingApproval = (location.state as { approvalId?: string | null } | null)?.approvalId ?? job.data?.approvalId ?? null;
 
   const j = job.data;
   if (job.error) return <div className="error">{job.error}</div>;
@@ -26,10 +24,6 @@ export function JobPage() {
     setError(null);
     try {
       const run = await unwrap(api.POST('/jobs/{id}/run', { params: { path: { id } } }));
-      if ('approvalRequired' in run) {
-        setError(`Vier-Augen-Prinzip: Die Ausführung auf ${run.devices} Geräten wartet auf die Freigabe durch eine zweite Person (Menü „Freigaben“).`);
-        return;
-      }
       navigate(`/runs/${run.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -54,11 +48,6 @@ export function JobPage() {
         {can('jobs:delete') && <DeleteButton onConfirm={() => unwrap(api.DELETE('/jobs/{id}', { params: { path: { id } } })).then(() => navigate('/jobs'))} />}
       </div>
       {error && <div className="error">{error}</div>}
-      {pendingApproval && (
-        <div className="card highlight">
-          Vier-Augen-Prinzip: Dieser Job wird erst ausgeführt bzw. aktiviert, wenn eine zweite Person zustimmt (<Link to="/approvals">Freigaben</Link>).
-        </div>
-      )}
       <div className="grid2">
         <div className="card">
           <h2>Ablauf</h2>
@@ -209,13 +198,7 @@ export function RunPage() {
           <button
             onClick={() =>
               void unwrap(api.POST('/runs/{id}/rerun', { params: { path: { id } }, body: { onlyFailed: true } }))
-                .then((n) => {
-                  if ('approvalRequired' in n) {
-                    setError(`Vier-Augen-Prinzip: Die Wiederholung auf ${n.devices} Geräten wartet auf die Freigabe durch eine zweite Person (Menü „Freigaben“).`);
-                    return;
-                  }
-                  navigate(`/runs/${n.id}`);
-                })
+                .then((n) => navigate(`/runs/${n.id}`))
                 .catch((e: Error) => setError(e.message))
             }
           >

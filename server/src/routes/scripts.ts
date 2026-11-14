@@ -1,14 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { scriptVersionSeal } from '../integrity.ts';
 import { and, asc, desc, eq, ilike, inArray, max, or, sql } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../audit.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/client.ts';
 import { devices, jobSteps, scripts, scriptVersions } from '../db/schema.ts';
 import { conflict, forbidden, HttpError, IdParams, isUniqueViolation, notFound, parse, Uuid } from '../http.ts';
-import { massApprovalNeeded } from '../approvals.ts';
 import { hasPermission } from '../auth/permissions.ts';
 import { createRun, DEFAULT_OPTIONS } from '../jobs/engine.ts';
 import { INTERPRETER_NAMES, INTERPRETERS, supportsOs } from '../jobs/interpreters.ts';
@@ -39,6 +38,12 @@ const TestRun = z.object({
   params: z.record(z.string(), z.unknown()).default({}),
   timeoutSeconds: z.number().int().min(10).max(86_400).default(600),
 });
+
+/** A new version is released right away if its author may release scripts; otherwise it stays a draft. */
+function releaseOnCreate(req: FastifyRequest) {
+  const p = principalOf(req);
+  return hasPermission(p.grants, 'scripts:approve') ? { status: 'approved', approvedBy: p.userId, approvedAt: new Date() } : {};
+}
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
 
@@ -102,6 +107,7 @@ export function scriptRoutes(app: FastifyInstance, config: Config) {
   app.post('/scripts', { preHandler: app.requirePermission('scripts:create') }, async (req, reply) => {
     const body = parse(CreateScript, req.body);
     const userId = principalOf(req).userId;
+    const release = releaseOnCreate(req);
     let id: string;
     try {
       id = await app.db.transaction(async (tx) => {
@@ -121,6 +127,7 @@ export function scriptRoutes(app: FastifyInstance, config: Config) {
           parameters: body.parameters,
           changeNote: body.changeNote,
           createdBy: userId,
+          ...release,
         });
         return s!.id;
       });
@@ -184,6 +191,7 @@ export function scriptRoutes(app: FastifyInstance, config: Config) {
         parameters: body.parameters,
         changeNote: body.changeNote,
         createdBy: principalOf(req).userId,
+        ...releaseOnCreate(req),
       });
     } catch (err) {
       if (isUniqueViolation(err)) throw conflict('Version was created concurrently – reload and try again');
@@ -203,14 +211,14 @@ export function scriptRoutes(app: FastifyInstance, config: Config) {
     const { id, version } = parse(VersionParams, req.params);
     const v = await loadVersion(app.db, id, version);
     const me = principalOf(req).userId;
+    if (v.status === 'approved') return v; // already released (new versions are released on creation)
     if (v.status !== 'draft') throw conflict(`Version is ${v.status}`);
-    if (!config.SCRIPT_SELF_APPROVAL && v.createdBy === me) throw forbidden('You cannot approve a version you created yourself');
     await app.db.update(scriptVersions).set({ status: 'approved', approvedBy: me, approvedAt: new Date() }).where(eq(scriptVersions.id, v.id));
     await writeAudit(app.db, actorOf(req), {
       action: 'script.version_approve',
       targetType: 'script',
       targetId: id,
-      details: { version, sha256: v.sha256, selfApproved: v.createdBy === me },
+      details: { version, sha256: v.sha256 },
       ip: req.ip,
     });
     return loadVersion(app.db, id, version);
@@ -236,10 +244,6 @@ export function scriptRoutes(app: FastifyInstance, config: Config) {
     // A draft is unreviewed code: only someone who could approve it may run it (REV-007).
     if (v.status !== 'approved' && !hasPermission(principalOf(req).grants, 'scripts:approve')) {
       throw forbidden('Only approved versions can be test-run without the permission scripts:approve');
-    }
-    // Test runs have no approval path; they must not be a way around the four-eyes threshold (REV-008).
-    if (await massApprovalNeeded(app.db, config, principalOf(req).userId, [body.deviceId], false)) {
-      throw new HttpError(409, 'four_eyes_limit', 'Together with your recent runs this would reach the four-eyes device threshold – use a job or an ad-hoc run, which a second person can approve');
     }
     const [d] = await app.db.select({ id: devices.id, os: devices.os, status: devices.status, hostname: devices.hostname }).from(devices).where(eq(devices.id, body.deviceId));
     if (!d) throw notFound('Device');

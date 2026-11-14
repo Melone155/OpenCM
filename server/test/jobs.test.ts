@@ -80,16 +80,16 @@ describe('M2: scripts, jobs, signed tasks', () => {
     });
     assert.equal(s.status, 201);
     assert.equal(s.body.latestVersion, 1);
-    assert.equal(s.body.approvedVersion, null);
-    assert.equal(s.body.versions[0].status, 'draft');
+    assert.equal(s.body.approvedVersion, 1, 'released on creation (author holds scripts:approve)');
+    assert.equal(s.body.versions[0].status, 'approved');
 
     const v2 = await api('POST', `/scripts/${s.body.id}/versions`, { content: 'Write-Output "v2"', parameters: [], changeNote: 'simpler' });
     assert.equal(v2.body.version, 2);
     assert.equal(v2.body.sha256, createHash('sha256').update('Write-Output "v2"').digest('hex'));
 
-    assert.equal((await api('POST', `/scripts/${s.body.id}/versions/1/approve`)).body.status, 'approved');
-    assert.equal((await api('POST', `/scripts/${s.body.id}/versions/1/approve`)).status, 409);
-    assert.equal((await api('GET', `/scripts/${s.body.id}`)).body.approvedVersion, 1);
+    assert.equal(v2.body.status, 'approved');
+    assert.equal((await api('POST', `/scripts/${s.body.id}/versions/1/approve`)).status, 200, 'approving a released version is a no-op');
+    assert.equal((await api('GET', `/scripts/${s.body.id}`)).body.approvedVersion, 2);
 
     // DB trigger forbids changing content of any version
     const tamper = ctx.handle.db.update(scriptVersions).set({ content: 'evil' }).where(eq(scriptVersions.scriptId, s.body.id));
@@ -111,7 +111,10 @@ describe('M2: scripts, jobs, signed tasks', () => {
   });
 
   it('jobs only accept approved versions and valid parameters', async () => {
-    const s = await api('POST', '/scripts', { name: 'draft-only', interpreter: 'bash', content: 'echo hi', parameters: [{ name: 'Mode', type: 'string', required: true }] });
+    // authors without scripts:approve create drafts
+    const author = await userWithGrants(ctx, 'draft-author', ['scripts:read', 'scripts:create']);
+    const s = await api('POST', '/scripts', { name: 'draft-only', interpreter: 'bash', content: 'echo hi', parameters: [{ name: 'Mode', type: 'string', required: true }] }, author.token);
+    assert.equal(s.body.versions[0].status, 'draft');
     const draft = await api('POST', '/jobs', { name: 'j', trigger: 'manual', targets: { deviceIds: [lin.deviceId] }, steps: [{ scriptId: s.body.id }] });
     assert.equal(draft.status, 400);
     assert.equal(draft.body.error.code, 'script_not_approved');
@@ -455,7 +458,8 @@ describe('M2: scripts, jobs, signed tasks', () => {
     }
     assert.equal((await api('GET', `/runs/${run.body.id}`)).body.status, 'completed');
 
-    const draft = await api('POST', '/scripts', { name: 'adhoc-draft', interpreter: 'bash', content: 'echo' });
+    const author = (await userWithGrants(ctx, 'adhoc-author', ['scripts:read', 'scripts:create'])).token;
+    const draft = await api('POST', '/scripts', { name: 'adhoc-draft', interpreter: 'bash', content: 'echo' }, author);
     assert.equal((await api('POST', `/scripts/${draft.body.id}/run`, { targets: { allDevices: true } })).status, 400, 'drafts only via test run');
     const noExec = await userWithGrants(ctx, 'noexec', ['scripts:read', 'scripts:execute']);
     assert.equal((await api('POST', `/scripts/${s.id}/run`, { targets: { allDevices: true } }, noExec.token)).status, 403);
@@ -501,11 +505,11 @@ describe('M2: scripts, jobs, signed tasks', () => {
   });
 });
 
-describe('M2: limits and self-approval policy', () => {
+describe('M2: limits and release on creation', () => {
   let ctx: TestCtx;
   let srv: AgentServerHandle;
   before(async () => {
-    ctx = await setup({ SCRIPT_SELF_APPROVAL: 'false', TASK_OUTPUT_MAX_BYTES: '1024' });
+    ctx = await setup({ TASK_OUTPUT_MAX_BYTES: '1024' });
     srv = await startAgentServer(ctx);
   });
   after(async () => {
@@ -513,13 +517,16 @@ describe('M2: limits and self-approval policy', () => {
     await ctx.close();
   });
 
-  it('forbids approving own versions when self-approval is disabled', async () => {
-    const s = await ctx.app.inject({ method: 'POST', url: '/api/v1/scripts', headers: bearer(ctx.adminToken), payload: { name: 'own', interpreter: 'bash', content: 'echo' } });
-    const res = await ctx.app.inject({ method: 'POST', url: `/api/v1/scripts/${s.json().id}/versions/1/approve`, headers: bearer(ctx.adminToken) });
-    assert.equal(res.statusCode, 403);
-    const approver = await userWithGrants(ctx, 'approver', ['scripts:read', 'scripts:approve']);
-    const ok = await ctx.app.inject({ method: 'POST', url: `/api/v1/scripts/${s.json().id}/versions/1/approve`, headers: bearer(approver.token) });
+  it('new versions are released on creation by users with scripts:approve', async () => {
+    const author = await userWithGrants(ctx, 'author', ['scripts:read', 'scripts:create', 'scripts:update']);
+    const s = await ctx.app.inject({ method: 'POST', url: '/api/v1/scripts', headers: bearer(author.token), payload: { name: 'own', interpreter: 'bash', content: 'echo' } });
+    assert.equal(s.json().versions[0].status, 'draft');
+    const releaser = await userWithGrants(ctx, 'releaser', ['scripts:read', 'scripts:update', 'scripts:approve']);
+    const v2 = await ctx.app.inject({ method: 'POST', url: `/api/v1/scripts/${s.json().id}/versions`, headers: bearer(releaser.token), payload: { content: 'echo 2' } });
+    assert.equal(v2.json().status, 'approved', 'released on creation');
+    const ok = await ctx.app.inject({ method: 'POST', url: `/api/v1/scripts/${s.json().id}/versions/1/approve`, headers: bearer(releaser.token) });
     assert.equal(ok.statusCode, 200);
+    assert.equal(ok.json().status, 'approved');
   });
 
   it('truncates task output at TASK_OUTPUT_MAX_BYTES', async () => {

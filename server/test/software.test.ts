@@ -160,7 +160,7 @@ describe('M5: software distribution & patch management', () => {
   let approver: { token: string; userId: string };
 
   before(async () => {
-    ctx = await setup({ SCRIPT_SELF_APPROVAL: 'false', PACKAGE_MAX_BYTES: '200000' });
+    ctx = await setup({ PACKAGE_MAX_BYTES: '200000' });
     srv = await startAgentServer(ctx);
     w1 = await enrollOk(ctx, { hostname: 'W1', os: 'windows' });
     w2 = await enrollOk(ctx, { hostname: 'W2', os: 'windows' });
@@ -265,10 +265,8 @@ describe('M5: software distribution & patch management', () => {
     assert.match(preview.body.content, /Start-Process -FilePath \$file -ArgumentList '\/S'/);
     assert.equal(preview.body.files[0].sha256, sha);
 
-    // four-eyes for package versions: the creator may not approve
-    const self = await api('POST', `/packages/${pkgId}/versions/${versionId}/approve`);
-    assert.equal(self.status, 403);
-    const ok = await api('POST', `/packages/${pkgId}/versions/${versionId}/approve`, undefined, approver.token);
+    // no second person needed: the creator releases the version
+    const ok = await api('POST', `/packages/${pkgId}/versions/${versionId}/approve`);
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
     assert.equal(ok.body.status, 'approved');
 
@@ -430,38 +428,12 @@ describe('M5: software distribution & patch management', () => {
     assert.equal(await nextTask(w2), null);
   });
 
-  it('four-eyes: broad deployments wait for a second person with software:approve', async () => {
-    await api('PATCH', '/settings/security', { fourEyes: { enabled: true, deviceThreshold: 0 } });
-    try {
-      const res = await api('POST', '/deployments', { kind: 'package', packageVersionId: versionId, rings: [{ name: 'Alle', targets: { allDevices: true } }] });
-      assert.equal(res.status, 202, JSON.stringify(res.body));
-      assert.equal(res.body.approvalRequired, true);
-      assert.equal(res.body.devices, 3, 'only Windows devices count');
-      assert.equal(res.body.deployment.status, 'pending_approval');
-      assert.equal(await nextTask(w3), null, 'nothing runs before approval');
-
-      assert.equal((await api('POST', `/approvals/${res.body.approvalId}/approve`)).status, 403, 'requester cannot approve');
-      const jobsOnly = await userWithGrants(ctx, 'jobs-approver', ['jobs:approve']);
-      assert.equal((await api('POST', `/approvals/${res.body.approvalId}/approve`, {}, jobsOnly.token)).status, 403, 'jobs:approve is not enough');
-      const listed = await api('GET', '/approvals', undefined, approver.token);
-      assert.ok(listed.body.items.some((a: { id: string; canDecide: boolean }) => a.id === res.body.approvalId && a.canDecide));
-      assert.ok(!(await api('GET', '/approvals', undefined, jobsOnly.token)).body.items.some((a: { id: string }) => a.id === res.body.approvalId));
-
-      const ok = await api('POST', `/approvals/${res.body.approvalId}/approve`, { reason: 'ok' }, approver.token);
-      assert.equal(ok.status, 200, JSON.stringify(ok.body));
-      assert.equal(ok.body.status, 'approved');
-      const d = await api('GET', `/deployments/${res.body.deployment.id}`);
-      assert.equal(d.body.status, 'running');
-      assert.equal(d.body.approvalStatus, 'approved');
-      assert.ok(await nextTask(w3), 'W3 gets its task after approval');
-
-      const res2 = await api('POST', '/deployments', { kind: 'package', packageVersionId: versionId, rings: [{ name: 'Alle', targets: { allDevices: true } }] });
-      assert.equal(res2.status, 202);
-      assert.equal((await api('POST', `/approvals/${res2.body.approvalId}/reject`, { reason: 'nicht jetzt' }, approver.token)).status, 200);
-      assert.equal((await api('GET', `/deployments/${res2.body.deployment.id}`)).body.status, 'cancelled');
-    } finally {
-      await api('PATCH', '/settings/security', { fourEyes: { enabled: false } });
-    }
+  it('deployments on all devices start immediately (no second person)', async () => {
+    const res = await api('POST', '/deployments', { kind: 'package', packageVersionId: versionId, rings: [{ name: 'Alle', targets: { allDevices: true } }] });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.status, 'running');
+    assert.equal('approvalStatus' in res.body, false);
+    assert.ok(await nextTask(w3), 'W3 gets its task right away');
   });
 
   it('patch scans: manual scan, ingestion, replacement, failures, reports', async () => {
